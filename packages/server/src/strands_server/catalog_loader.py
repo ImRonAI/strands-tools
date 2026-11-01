@@ -602,6 +602,12 @@ def load_all_strands_tools(*, force_reload: bool = False) -> list[StrandsFastMCP
             name: tool_item.strands_target
             for name, tool_item in catalog.items()
             if tool_item.strands_target is not None
+            and getattr(
+                getattr(tool_item.strands_target, "_tool_func", tool_item.strands_target),
+                "__name__",
+                "",
+            )
+            != "_stub"
         }
         register_available_tools(assignable_map)
 

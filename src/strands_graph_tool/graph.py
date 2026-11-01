@@ -456,12 +456,30 @@ def _build_node_executor(node_spec: dict[str, Any], parent_agent: Agent | None =
 def build_graph(topology: dict[str, Any], parent_agent: Agent | None = None) -> Graph:
     """Compile a topology dictionary into a native Strands Graph containing Agent/Swarm/Graph/Skill nodes."""
     builder = GraphBuilder()
-    for node_spec in topology.get("nodes", []):
-        node_id = str(node_spec["id"])
+    for idx, node_spec in enumerate(topology.get("nodes", [])):
+        node_id = str(node_spec.get("id") or node_spec.get("name") or f"node_{idx}")
         executor = _build_node_executor(node_spec, parent_agent=parent_agent)
         builder.add_node(executor, node_id)
     for edge in topology.get("edges", []) or []:
-        builder.add_edge(str(edge["from"]), str(edge["to"]))
+        if isinstance(edge, (list, tuple)) and len(edge) >= 2:
+            builder.add_edge(str(edge[0]), str(edge[1]))
+        elif isinstance(edge, dict):
+            src = edge.get("from") or edge.get("source")
+            dst = edge.get("to") or edge.get("target")
+            if src is not None and dst is not None:
+                builder.add_edge(str(src), str(dst))
+    if topology.get("entry_point"):
+        builder.set_entry_point(str(topology["entry_point"]))
+    for ep in topology.get("entry_points", []) or []:
+        builder.set_entry_point(str(ep))
+    if topology.get("max_node_executions") is not None:
+        builder.set_max_node_executions(int(topology["max_node_executions"]))
+    if topology.get("execution_timeout") is not None:
+        builder.set_execution_timeout(float(topology["execution_timeout"]))
+    if topology.get("node_timeout") is not None:
+        builder.set_node_timeout(float(topology["node_timeout"]))
+    if topology.get("reset_on_revisit") is not None:
+        builder.reset_on_revisit(bool(topology["reset_on_revisit"]))
     return builder.build()
 
 
@@ -549,8 +567,17 @@ async def graph(
             "content": [{"text": f"Graph '{graph_id}' has {len(g.nodes)} nodes: {', '.join(g.nodes)}"}],
         }
         return
-    if action == "execute":
-        g = _DEFAULT_MANAGER.get(graph_id or "")
+    if action in ("execute", "run"):
+        g = _DEFAULT_MANAGER.get(graph_id or "") if graph_id else None
+        if g is None and topology is not None:
+            try:
+                g = build_graph(topology, parent_agent=parent_agent)
+            except Exception as exc:
+                yield {"status": "error", "content": [{"text": f"Failed to build graph: {exc}"}]}
+                return
+            if graph_id:
+                _DEFAULT_MANAGER._graphs[graph_id] = g
+                _DEFAULT_MANAGER._topologies[graph_id] = topology
         if g is None:
             yield {"status": "error", "content": [{"text": f"Graph '{graph_id}' not found"}]}
             return
@@ -561,7 +588,7 @@ async def graph(
                 final_result = event["result"]
         yield {
             "status": "success",
-            "content": [{"text": str(final_result) if final_result is not None else f"Graph '{graph_id}' completed."}],
+            "content": [{"text": str(final_result) if final_result is not None else f"Graph '{graph_id or 'inline'}' completed."}],
         }
         return
 

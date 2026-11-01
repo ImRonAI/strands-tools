@@ -200,8 +200,25 @@ def _create_custom_agents(
             # Get actual tool objects from parent agent's registry
             agent_tools = [parent_agent.tool_registry.registry[tool_name] for tool_name in filtered_tool_names]
 
+        # Resolve model if model_provider or model_id is specified
+        model_provider = spec.get("model_provider")
+        model_settings = spec.get("model_settings")
+        selected_model = None
+        if model_provider:
+            try:
+                from strands_tools.utils.models.model import create_model
+
+                selected_model = create_model(provider=model_provider, config=model_settings)
+            except Exception as e:
+                logger.warning(f"Failed to create model for agent '{agent_name}': {e}")
+        elif spec.get("model_id"):
+            selected_model = str(spec["model_id"])
+        elif parent_agent and hasattr(parent_agent, "model"):
+            selected_model = parent_agent.model
+
         # Create agent
         swarm_agent = Agent(
+            model=selected_model,
             name=agent_name,
             system_prompt=system_prompt,
             tools=agent_tools,
@@ -210,14 +227,12 @@ def _create_custom_agents(
         )
 
         # Configure model provider
-        model_provider = spec.get("model_provider")
         if model_provider:
             swarm_agent.model_provider = model_provider
         elif parent_agent and hasattr(parent_agent, "model_provider"):
             swarm_agent.model_provider = parent_agent.model_provider
 
         # Configure model settings
-        model_settings = spec.get("model_settings")
         if model_settings:
             swarm_agent.model_settings = model_settings
         elif parent_agent and hasattr(parent_agent, "model_settings"):

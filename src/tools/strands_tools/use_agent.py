@@ -202,6 +202,8 @@ def use_agent(
                         logger.warning(f"Tool '{tool_name}' not found in parent agent's tool registry")
             else:
                 filtered_tools = list(agent.tool_registry.registry.values())
+        elif tools is not None:
+            filtered_tools = list(tools)
 
         # Determine which model to use
         selected_model = None
@@ -209,12 +211,13 @@ def use_agent(
         if model_provider is None:
             # Use parent agent's model (original behavior)
             selected_model = agent.model if agent else None
-            model_info = "Using parent agent's model"
+            model_info = "Using parent agent's model" if agent else "Using default model"
 
         elif model_provider == "env":
             # Use environment variables to determine model
             try:
-                env_provider = os.getenv("STRANDS_PROVIDER", "ollama")
+                default_env_provider = "gemini" if (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")) else "ollama"
+                env_provider = os.getenv("STRANDS_PROVIDER", default_env_provider)
                 selected_model = create_model(provider=env_provider, config=model_settings)
                 model_info = f"Using environment model: {env_provider}"
                 logger.debug(f"🔄 Created model from environment: {env_provider}")

@@ -116,17 +116,35 @@ def create_model(provider: str = None, config: dict[str, Any] = None) -> Model:
     """Create model based on provider configuration.
 
     Args:
-        provider: Model provider name. If None, uses STRANDS_PROVIDER env var or defaults to 'bedrock'.
+        provider: Model provider name. If None, uses STRANDS_PROVIDER env var or defaults to 'gemini' when GEMINI_API_KEY/GOOGLE_API_KEY is set, otherwise 'bedrock'.
         config: Model configuration dict. If None, uses environment-based config.
 
     Returns:
         Configured model instance.
     """
     if provider is None:
-        provider = os.getenv("STRANDS_PROVIDER", "bedrock")
+        default_provider = "gemini" if (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")) else "bedrock"
+        provider = os.getenv("STRANDS_PROVIDER", default_provider)
 
     if config is None:
         config = get_provider_config(provider)
+
+    if provider in ("gemini", "google"):
+        from strands.models.gemini_interactions import GeminiInteractionsModel
+
+        model_id = str(config.get("model_id") or os.getenv("STRANDS_MODEL_ID", "gemini-4-argon"))
+        api_key = config.get("api_key") or (config.get("client_args") or {}).get("api_key")
+        client_args = {"api_key": api_key} if api_key else None
+        params = config.get("params") or config.get("generation_config")
+        gemini_tools = config.get("gemini_tools") or config.get("tools") or config.get("builtin_tools")
+        kwargs: dict[str, Any] = {"model_id": model_id}
+        if client_args:
+            kwargs["client_args"] = client_args
+        if params:
+            kwargs["params"] = params
+        if gemini_tools:
+            kwargs["gemini_tools"] = gemini_tools
+        return GeminiInteractionsModel(**kwargs)
 
     if provider == "bedrock":
         from strands.models.bedrock import BedrockModel
@@ -191,6 +209,12 @@ def get_provider_config(provider: str) -> dict[str, Any]:
     Returns:
         Configuration dictionary for the provider.
     """
+    if provider in ("gemini", "google"):
+        return {
+            "model_id": os.getenv("STRANDS_MODEL_ID", "gemini-4-argon"),
+            "api_key": os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"),
+        }
+
     if provider == "bedrock":
         return {
             "model_id": os.getenv("STRANDS_MODEL_ID", "us.anthropic.claude-sonnet-4-20250514-v1:0"),
@@ -295,6 +319,8 @@ def get_available_providers() -> list[str]:
         List of available model provider names.
     """
     return [
+        "gemini",
+        "google",
         "bedrock",
         "anthropic",
         "litellm",

@@ -378,9 +378,25 @@ class Agent(AgentBase, LocalAgent):
             self._model_router = model
             self.model = model.default_model
         elif not model:
-            self.model = BedrockModel()
+            import os
+
+            if (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")) and not (
+                os.environ.get("AWS_ACCESS_KEY_ID") or os.environ.get("AWS_BEARER_TOKEN_BEDROCK")
+            ):
+                from strands_harness.models import build_gemini_fallback_router
+
+                router = build_gemini_fallback_router()
+                self._model_router = router
+                self.model = router.default_model
+            else:
+                self.model = BedrockModel()
         elif isinstance(model, str):
-            self.model = BedrockModel(model_id=model)
+            if model.startswith("gemini"):
+                from ..models.gemini_interactions import GeminiInteractionsModel
+
+                self.model = GeminiInteractionsModel(model_id=model)
+            else:
+                self.model = BedrockModel(model_id=model)
         else:
             self.model = model
         self._aux_model: Model | None = _resolve_aux_model(aux_model)

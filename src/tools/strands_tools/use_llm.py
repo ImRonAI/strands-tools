@@ -169,6 +169,8 @@ def use_llm(tool: ToolUse, **kwargs: Any) -> ToolResult:
             tools = filtered_tools
         else:
             tools = list(parent_agent.tool_registry.registry.values())
+    elif specified_tools is not None:
+        tools = list(specified_tools)
 
     if "callback_handler" in kwargs:
         extra_kwargs["callback_handler"] = kwargs["callback_handler"]

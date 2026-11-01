@@ -93,7 +93,27 @@ def load_tool_from_string(tool_string: str) -> list[AgentTool]:
     # Case 2: Module import path
     # Ex: test.fixtures.say_tool:say (Load specific @tool decorated function)
     # Ex: strands_tools.file_read (Load all @tool decorated functions, or module tool)
-    return load_tools_from_module_path(tool_string)
+    try:
+        return load_tools_from_module_path(tool_string)
+    except AttributeError:
+        if "." not in tool_string and ":" not in tool_string:
+            try:
+                from agentskills import get_available_tools_registry
+
+                reg = get_available_tools_registry()
+                if tool_string in reg:
+                    target = reg[tool_string]
+                    if isinstance(target, AgentTool):
+                        return [target]
+                    if isinstance(target, ModuleType):
+                        return load_tools_from_module(target, tool_string)
+            except Exception:
+                pass
+            try:
+                return load_tools_from_module_path(f"strands_tools.{tool_string}")
+            except AttributeError:
+                pass
+        raise
 
 
 def load_tools_from_file_path(tool_path: str) -> list[AgentTool]:

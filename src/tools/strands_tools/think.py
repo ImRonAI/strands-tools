@@ -214,6 +214,8 @@ Please provide your analysis directly:
                         logger.debug("Automatically excluding 'think' tool from nested agent to prevent recursion")
                         continue
                     filtered_tools.append(tool_obj)
+        elif specified_tools is not None:
+            filtered_tools = [t for t in specified_tools if t != "think"]
 
         # Determine which model to use
         selected_model = None
@@ -221,12 +223,13 @@ Please provide your analysis directly:
         if model_provider is None:
             # Use parent agent's model (original behavior)
             selected_model = parent_agent.model if parent_agent else None
-            model_info = "Using parent agent's model"
+            model_info = "Using parent agent's model" if parent_agent else "Using default model"
 
         elif model_provider == "env":
             # Use environment variables to determine model
             try:
-                env_provider = os.getenv("STRANDS_PROVIDER", "bedrock")
+                default_env_provider = "gemini" if (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")) else "bedrock"
+                env_provider = os.getenv("STRANDS_PROVIDER", default_env_provider)
                 selected_model = create_model(provider=env_provider, config=model_settings)
                 model_info = f"Using environment model: {env_provider}"
                 logger.debug(f"🔄 Created model from environment: {env_provider}")
