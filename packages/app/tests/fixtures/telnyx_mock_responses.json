@@ -1,0 +1,572 @@
+{
+  "GET /v2/phone_numbers": {
+    "status": 200,
+    "body": {
+      "data": [
+        {
+          "id": "pn-fixture-001",
+          "record_type": "phone_number",
+          "phone_number": "+15555550100",
+          "country_iso_alpha2": "US",
+          "status": "active",
+          "tags": ["fixture"],
+          "connection_name": "Fixture Connection",
+          "customer_reference": null,
+          "messaging_profile_id": "mp-fixture-001",
+          "billing_group_id": null,
+          "emergency_enabled": false,
+          "emergency_address_id": null,
+          "emergency_status": "disabled",
+          "call_forwarding_enabled": false,
+          "cnam_listing_enabled": false,
+          "caller_id_name_enabled": false,
+          "call_recording_enabled": false,
+          "t38_fax_gateway_enabled": false,
+          "purchased_at": "2026-01-05T09:30:00.000000Z",
+          "created_at": "2026-01-05T09:30:00.000000Z",
+          "updated_at": "2026-01-05T09:30:00.000000Z",
+          "phone_number_type": "local",
+          "inbound_call_screening": "disabled",
+          "hd_voice_enabled": false,
+          "deletion_lock_enabled": false,
+          "activated_at": "2026-01-05T09:31:00Z"
+        },
+        {
+          "id": "pn-fixture-002",
+          "record_type": "phone_number",
+          "phone_number": "+15555550101",
+          "country_iso_alpha2": "US",
+          "status": "active",
+          "tags": ["fixture", "toll-free"],
+          "connection_name": "Fixture Connection",
+          "customer_reference": null,
+          "messaging_profile_id": null,
+          "billing_group_id": "bg-fixture-001",
+          "emergency_enabled": false,
+          "emergency_address_id": null,
+          "emergency_status": "disabled",
+          "call_forwarding_enabled": true,
+          "cnam_listing_enabled": true,
+          "caller_id_name_enabled": true,
+          "call_recording_enabled": true,
+          "t38_fax_gateway_enabled": false,
+          "purchased_at": "2026-01-06T11:00:00.000000Z",
+          "created_at": "2026-01-06T11:00:00.000000Z",
+          "updated_at": "2026-01-07T08:15:00.000000Z",
+          "phone_number_type": "toll_free",
+          "inbound_call_screening": "disabled",
+          "hd_voice_enabled": true,
+          "deletion_lock_enabled": false,
+          "activated_at": "2026-01-06T11:01:00Z"
+        }
+      ],
+      "meta": {
+        "total_pages": 1,
+        "total_results": 2,
+        "page_number": 1,
+        "page_size": 20
+      }
+    }
+  },
+  "GET /v2/balance": {
+    "status": 200,
+    "body": {
+      "data": {
+        "record_type": "balance",
+        "balance": "25.50",
+        "currency": "USD",
+        "pending": "0.00",
+        "credit_limit": "0.00",
+        "available_credit": "25.50"
+      }
+    }
+  },
+  "GET /v2/number_orders/{id}": {
+    "status": 200,
+    "body": {
+      "data": {
+        "id": "no-fixture-001",
+        "record_type": "number_order",
+        "phone_numbers_count": 1,
+        "connection_id": "conn-fixture-001",
+        "messaging_profile_id": "mp-fixture-001",
+        "billing_group_id": "bg-fixture-001",
+        "sub_number_orders_ids": ["sno-fixture-001"],
+        "status": "success",
+        "customer_reference": "fixture-order",
+        "created_at": "2026-01-08T10:00:00.000000Z",
+        "updated_at": "2026-01-08T10:02:00.000000Z",
+        "requirements_met": true,
+        "phone_numbers": [
+          {
+            "id": "pn-fixture-100",
+            "record_type": "number_order_phone_number",
+            "phone_number": "+15555550100",
+            "status": "success",
+            "country_iso_alpha2": "US",
+            "order_request_id": "rq-fixture-001",
+            "sub_number_order_id": "sno-fixture-001"
+
+          }
+        ]
+      }
+    }
+  },
+  "POST /v2/telephony_credentials/credential-fixture-001/token": {
+    "status": 201,
+    "content_type": "text/plain",
+    "body": "voice-token-fixture"
+  },
+  "POST /v2/telephony_credentials/credential-malformed/token": {
+    "status": 201,
+    "content_type": "text/plain",
+    "body": ""
+  },
+  "POST /v2/rooms/room-fixture-001/actions/generate_join_client_token": {
+    "status": 201,
+    "body": {
+      "data": {
+        "token": "room-token-fixture",
+        "token_expires_at": "2026-10-07T23:30:00Z",
+        "refresh_token": "room-refresh-token-fixture",
+        "refresh_token_expires_at": "2026-10-08T00:20:00Z"
+      }
+    }
+  },
+  "POST /v2/rooms/room-malformed/actions/generate_join_client_token": {
+    "status": 201,
+    "body": {
+      "data": {}
+    }
+  },
+  "GET /v2/messaging_profiles": {
+    "status": 200,
+    "body": {
+      "data": [
+        {
+          "record_type": "messaging_profile",
+          "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "mms_fall_back_to_sms": false,
+          "mms_transcoding": false,
+          "name": "Fixture Messaging Profile",
+          "enabled": true,
+          "webhook_url": "https://example.com/webhooks/messaging",
+          "webhook_failover_url": null,
+          "webhook_api_version": "2",
+          "health_webhook_url": null,
+          "whitelisted_destinations": [
+            "US",
+            "CA"
+          ],
+          "created_at": "2026-01-10T12:00:00.000000Z",
+          "updated_at": "2026-01-10T12:00:00.000000Z",
+          "v1_secret": "fixture-v1-secret",
+          "number_pool_settings": null,
+          "url_shortener_settings": null,
+          "alpha_sender": null,
+          "daily_spend_limit": "100.00",
+          "daily_spend_limit_enabled": false,
+          "redaction_enabled": false,
+          "redaction_level": 0,
+          "mobile_only": false,
+          "smart_encoding": true,
+          "features": {
+            "ai_opt_out_detection_enabled": false
+          },
+          "organization_id": "org-fixture-001",
+          "ai_assistant_id": null,
+          "resource_group_id": null
+        }
+      ],
+      "meta": {
+        "total_pages": 1,
+        "total_results": 1,
+        "page_number": 1,
+        "page_size": 25
+      }
+    }
+  },
+  "GET /v2/faxes": {
+    "status": 200,
+    "body": {
+      "data": [
+        {
+          "record_type": "fax",
+          "id": "0ccc7b54-4df3-4bca-a65a-3da1ecc777f0",
+          "connection_id": "conn-fixture-001",
+          "direction": "outbound",
+          "media_url": "https://example.com/fixture.pdf",
+          "media_name": "fixture.pdf",
+          "to": "+15555550160",
+          "from": "+15555550150",
+          "from_display_name": "Fixture Fax",
+          "quality": "high",
+          "status": "delivered",
+          "webhook_url": "https://example.com/webhooks/fax",
+          "webhook_failover_url": "",
+          "store_media": true,
+          "stored_media_url": "https://example.com/stored/fixture.pdf",
+          "preview_url": "https://example.com/preview/fixture.png",
+          "client_state": "",
+          "created_at": "2026-01-11T09:00:00.000000Z",
+          "updated_at": "2026-01-11T09:02:00.000000Z",
+          "failure_reason": null,
+          "internal_failure_reason": null
+        }
+      ],
+      "meta": {
+        "total_pages": 1,
+        "total_results": 1,
+        "page_number": 1,
+        "page_size": 25
+      }
+    }
+  },
+  "GET /v2/verify_profiles": {
+    "status": 200,
+    "body": {
+      "data": [
+        {
+          "id": "49000000-0000-4000-8000-000000000001",
+          "name": "Fixture Verify Profile",
+          "webhook_url": "https://example.com/webhooks/verify",
+          "webhook_failover_url": "",
+          "daily_spend_limit_enabled": false,
+          "daily_spend_limit": 0,
+          "record_type": "verification_profile",
+          "created_at": "2026-01-12T10:00:00.000000Z",
+          "updated_at": "2026-01-12T10:00:00.000000Z",
+          "language": "en-US",
+          "sms": {
+            "messaging_template_id": "49000000-0000-4000-8000-000000000002",
+            "app_name": "Fixture App",
+            "alpha_sender": null,
+            "code_length": 6,
+            "whitelisted_destinations": [
+              "US"
+            ],
+            "default_verification_timeout_secs": 300
+          },
+          "call": {
+            "messaging_template_id": "49000000-0000-4000-8000-000000000002",
+            "app_name": "Fixture App",
+            "code_length": 6,
+            "whitelisted_destinations": [
+              "US"
+            ],
+            "default_verification_timeout_secs": 300
+          },
+          "flashcall": {
+            "app_name": "Fixture App",
+            "default_verification_timeout_secs": 300
+          },
+          "whatsapp": {
+            "messaging_template_id": "49000000-0000-4000-8000-000000000002",
+            "app_name": "Fixture App",
+            "code_length": 6,
+            "whitelisted_destinations": [
+              "US"
+            ],
+            "default_verification_timeout_secs": 300,
+            "waba_id": null,
+            "sender_phone_number": null,
+            "template_id": null
+          }
+        }
+      ],
+      "meta": {
+        "total_pages": 1,
+        "total_results": 1,
+        "page_number": 1,
+        "page_size": 25
+      }
+    }
+  },
+  "GET /v2/rooms": {
+    "status": 200,
+    "body": {
+      "data": [
+        {
+          "id": "0ccc7b54-4df3-4bca-a65a-3da1ecc777f1",
+          "max_participants": 10,
+          "unique_name": "fixture-room-001",
+          "created_at": "2026-01-13T08:00:00.000000Z",
+          "updated_at": "2026-01-13T08:00:00.000000Z",
+          "active_session_id": "7b61621f-62e0-4aad-ab11-9fd19e272e73",
+          "sessions": [],
+          "enable_recording": false,
+          "webhook_event_url": "https://example.com/webhooks/rooms",
+          "webhook_event_failover_url": "",
+          "webhook_timeout_secs": 25,
+          "record_type": "room"
+        }
+      ],
+      "meta": {
+        "total_pages": 1,
+        "total_results": 1,
+        "page_number": 1,
+        "page_size": 25
+      }
+    }
+  },
+  "GET /v2/meeting_sessions": {
+    "status": 200,
+    "body": {
+      "data": [
+        {
+          "id": "ms-fixture-001",
+          "account_id": "acct-fixture-001",
+          "provider": "telnyx",
+          "status": "active",
+          "status_detail": null,
+          "recording": false,
+          "meeting_url": "https://meet.google.com/abc-defg-hij",
+          "platform": "google_meet",
+          "bot_name": "Fixture Meeting Bot",
+          "config": {
+            "voice": null,
+            "speak_on_enter": null,
+            "chat_on_enter": null,
+            "barge_in": false,
+            "summarize_on_end": false
+          },
+          "avatar": null,
+          "avatar_state": null,
+          "avatar_state_changed_at": null,
+          "assistant": null,
+          "assistant_state": null,
+          "assistant_state_changed_at": null,
+          "webhook_url": null,
+          "metadata": {},
+          "failure_reason": null,
+          "created_at": "2026-01-14T15:00:00Z",
+          "join_at": null,
+          "joined_at": "2026-01-14T15:00:30Z",
+          "ended_at": null,
+          "updated_at": "2026-01-14T15:00:30Z"
+        }
+      ]
+    }
+  },
+  "GET /v2/email_messages": {
+    "status": 200,
+    "body": {
+      "data": [
+        {
+          "record_type": "email_message",
+          "id": "8c3e1a2b-4d5f-4e6a-9b7c-1d2e3f4a5b6c",
+          "status": "delivered",
+          "from": {
+            "email": "noreply@example.com",
+            "name": "Fixture Sender"
+          },
+          "to": [
+            {
+              "email": "recipient@example.com",
+              "name": "Fixture Recipient"
+            }
+          ],
+          "cc": [],
+          "bcc": [],
+          "reply_to": "support@example.com",
+          "subject": "Fixture welcome email",
+          "template_id": "8c3e1a2b-4d5f-4e6a-9b7c-1d2e3f4a5b6d",
+          "template_variables": {},
+          "tags": [
+            "fixture"
+          ],
+          "metadata": {},
+          "attachments": [],
+          "events": [],
+          "created_at": "2026-01-15T11:00:00Z",
+          "inline_css": false,
+          "sandbox": false
+        }
+      ],
+      "meta": {
+        "page_size": 25
+      }
+    }
+  },
+  "GET /v2/call_control_applications": {
+    "status": 200,
+    "body": {
+      "data": [
+        {
+          "active": true,
+          "anchorsite_override": "Latency",
+          "application_name": "Fixture Call Control App",
+          "created_at": "2026-01-16T09:00:00.000000Z",
+          "dtmf_type": "RFC 2833",
+          "first_command_timeout": false,
+          "first_command_timeout_secs": 30,
+          "tags": [
+            "fixture"
+          ],
+          "id": "1293384261075731499",
+          "inbound": {
+            "channel_limit": 10,
+            "shaken_stir_enabled": false,
+            "sip_subdomain": "fixture-cc",
+            "sip_subdomain_receive_settings": "only_my_connections"
+          },
+          "outbound": {
+            "channel_limit": 10,
+            "outbound_voice_profile_id": "1293384261075731500"
+          },
+          "record_type": "call_control_application",
+          "updated_at": "2026-01-16T09:00:00.000000Z",
+          "webhook_api_version": "2",
+          "webhook_event_failover_url": null,
+          "webhook_event_url": "https://example.com/webhooks/call-control",
+          "webhook_timeout_secs": 25,
+          "call_cost_in_webhooks": false,
+          "redact_dtmf_debug_logging": false
+        }
+      ],
+      "meta": {
+        "total_pages": 1,
+        "total_results": 1,
+        "page_number": 1,
+        "page_size": 25
+      }
+    }
+  },
+  "GET /v2/ai/assistants": {
+    "status": 200,
+    "body": {
+      "data": [
+        {
+          "id": "assistant-fixture-001",
+          "name": "Fixture Assistant",
+          "created_at": "2026-01-17T10:00:00Z",
+          "version_id": "assistant-fixture-001-v1",
+          "version_created_at": "2026-01-17T10:00:00Z",
+          "description": "Fixture support assistant",
+          "model": "meta-llama/Meta-Llama-3.1-70B-Instruct",
+          "instructions": "You are the fixture assistant.",
+          "tools": [],
+          "mcp_servers": [],
+          "a2a_agents": [],
+          "greeting": "Hello from the fixture assistant.",
+          "tags": [
+            "fixture"
+          ]
+        }
+      ]
+    }
+  },
+  "GET /v2/ai/embeddings": {
+    "status": 200,
+    "body": {
+      "data": [
+        {
+          "user_id": "user-fixture-001",
+          "task_id": "task-fixture-001",
+          "task_name": "fixture-embedding-task",
+          "status": "success",
+          "created_at": "2026-01-18T12:00:00Z",
+          "finished_at": "2026-01-18T12:05:00Z",
+          "bucket": "fixture-bucket"
+        }
+      ]
+    }
+  },
+  "GET /v2/voice_designs": {
+    "status": 200,
+    "body": {
+      "data": [
+        {
+          "record_type": "voice_design",
+          "id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+          "name": "Fixture Voice Design",
+          "created_at": "2026-01-19T09:00:00Z",
+          "updated_at": "2026-01-19T09:00:00Z",
+          "provider": "telnyx",
+          "provider_supported_models": []
+        }
+      ],
+      "meta": {
+        "page_number": 1,
+        "page_size": 25,
+        "total_results": 1,
+        "total_pages": 1
+      }
+    }
+  },
+  "GET /v2/storage/kvs": {
+    "status": 200,
+    "body": {
+      "data": [
+        {
+          "record_type": "storage_kv",
+          "id": "550e8400-e29b-41d4-a716-446655440000",
+          "name": "fixture-cache",
+          "status": "provision_ok",
+          "created_at": "2026-01-20T08:00:00Z",
+          "updated_at": "2026-01-20T08:00:00Z"
+        }
+      ],
+      "meta": {
+        "page_number": 1,
+        "page_size": 25,
+        "total_pages": 1,
+        "total_results": 1
+      }
+    }
+  },
+  "GET /v2/ai/fine_tuning/jobs": {
+    "status": 200,
+    "body": {
+      "data": [
+        {
+          "id": "ftjob-fixture-001",
+          "created_at": 1768996800,
+          "finished_at": null,
+          "hyperparameters": {
+            "n_epochs": 3
+          },
+          "model": "meta-llama/Meta-Llama-3.1-8B-Instruct",
+          "organization_id": "org-fixture-001",
+          "status": "running",
+          "trained_tokens": null,
+          "training_file": "fixture-training.jsonl"
+        }
+      ]
+    }
+  },
+  "GET /v2/addresses": {
+    "status": 200,
+    "body": {
+      "data": [
+        {
+          "id": "1293384261075731501",
+          "record_type": "address",
+          "customer_reference": "fixture-hq",
+          "first_name": "Fixture",
+          "last_name": "Owner",
+          "business_name": "Fixture Business LLC",
+          "phone_number": "+15555550100",
+          "street_address": "600 Congress Avenue",
+          "extended_address": "14th Floor",
+          "locality": "Austin",
+          "administrative_area": "TX",
+          "neighborhood": "",
+          "borough": "",
+          "postal_code": "78701",
+          "country_code": "US",
+          "address_book": true,
+          "validate_address": true,
+          "created_at": "2026-01-21T09:00:00.000000Z",
+          "updated_at": "2026-01-21T09:00:00.000000Z"
+        }
+      ],
+      "meta": {
+        "total_pages": 1,
+        "total_results": 1,
+        "page_number": 1,
+        "page_size": 25
+      }
+    }
+  }
+}

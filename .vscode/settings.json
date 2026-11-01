@@ -1,0 +1,16 @@
+{
+    "workbench.editor.autoLockGroups": {
+        "workbench.editor.chatSession": true,
+        "default": true,
+        "workbench.editorinputs.searchEditorInput": true,
+        "notebookOutputEditor": true,
+        "jupyter-notebook": true,
+        "sql-book": true,
+        "antigravity.artifactsEditorInput": true,
+        "mainThreadWebview-markdown.preview": true
+    },
+    "workbench.editor.alwaysShowEditorActions": true,
+    "workbench.editor.closeOnFileDelete": true,
+    "workbench.editor.decorations.badges": true,
+    "workbench.editor.defaultBinaryEditor": "default"
+}

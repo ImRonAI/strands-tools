@@ -1,0 +1,23 @@
+{
+  "skill_name": "strands-async-graph-tool-builder",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "In the current repository, replace the existing Strands graph wrapper with a production implementation that supports nested Graph, Swarm, workflow, parallel, tool-batch, skill-agent, and A2A nodes. It must be a real async streaming AgentTool, preserve nested paths, enforce exact tool scopes, support hooks, interrupts, sessions, cancellation, and stream through the actual UI. Inspect the installed SDK and existing code first. Implement and validate the actual feature; do not use mocks, stubs, fake agents, or synthetic browser events.",
+      "expected_output": "A minimal production implementation or an evidence-backed partial implementation that clearly identifies blockers; strict recursive schema and compiler; fresh run-scoped executors; streaming AgentTool; durable normalized events; exact capability policy; interrupt/resume and cleanup; dependency/install documentation; actual SDK integration and Playwright proof with no overclaiming.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Audit the graph orchestration implementation in this repository for native Strands contract violations and repair the requested defects. Pay special attention to Python OR joins, global live Graph reuse, parent-tool leakage, sequential batch code advertised as parallel, nested stream flattening, internal ToolResultEvent visibility, mutable invocation-state races, timeout and count overshoot, cancellation, A2A interrupts, and duplicate terminal events. Use current official docs and matching source. Validate with real integrations and the actual UI.",
+      "expected_output": "A source-anchored findings artifact plus scoped repairs; exact distinction between native and wrapper behavior; explicit all-join compilation; no live executor sharing; bounded application queues with honest native limitations; no false error-edge or backpressure claims; and actual runtime and UI evidence or clearly labeled blockers.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Add a topology where a first-class skill Agent and a dynamic skill subagent both participate inside a nested Graph containing a Swarm and parallel workflow branches. Stream the hierarchy over the application's real SSE or WebSocket transport, pause on a real approval interrupt, survive process and session recreation, resume the correct nested node, and allow cancellation from the UI. Preserve strict tool isolation and test the visible flow with Playwright using actual backend events.",
+      "expected_output": "An explicit skill-agent mode design, recursive compiled topology, exact scoped tools, native nested formation execution, cursor-based JSON-safe stream, durable interrupt/session resume tied to topology hash, cancellation without orphan tasks, and one coherent Playwright acceptance flow backed by real services and recorded evidence.",
+      "files": []
+    }
+  ]
+}

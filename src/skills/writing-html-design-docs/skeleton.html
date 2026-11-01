@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<!--
+  ============================================================================
+  HTML DESIGN-DOC SKELETON
+  Skill: writing-html-design-docs
+  ============================================================================
+  HOW TO USE:
+    1. cp this file to your target path: cp skeleton.html /path/to/your-doc.html
+    2. Replace every <!-- FILL: ... --> placeholder
+    3. Renumber section eyebrows (01, 02, 03 ...) in order
+    4. Edit the TICKETS object at the bottom (or delete the kanban + modal + script
+       block if your doc doesn't have a roadmap)
+    5. open your-doc.html  (macOS) to verify
+  CONSTRAINT: do not introduce external CSS, JS frameworks, or image assets.
+              Only Tailwind CDN + Google Fonts are permitted external deps.
+  ============================================================================
+-->
+<html lang="en" class="scroll-smooth">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title><!-- FILL: page title --> · Design Doc</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['Inter', 'system-ui', 'sans-serif'],
+          display: ['Outfit', 'Inter', 'sans-serif'],
+          mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+        },
+        colors: {
+          ink: {
+            950: '#070809', 900: '#0c0d11', 850: '#101218', 800: '#15171f',
+            700: '#1c1f29', 600: '#262a36', 500: '#404657', 400: '#6b7186',
+            300: '#9aa0b4', 200: '#c4c8d6', 100: '#e6e8ef',
+          }
+        },
+        animation: {
+          'fade-in': 'fadeIn .5s ease-out',
+          'fade-in-up': 'fadeInUp .6s ease-out',
+          'glow': 'glow 4s ease-in-out infinite',
+          'pulse-dot': 'pulseDot 2.2s ease-in-out infinite',
+        },
+        keyframes: {
+          fadeIn:   { '0%':{opacity:0}, '100%':{opacity:1} },
+          fadeInUp: { '0%':{opacity:0, transform:'translateY(8px)'}, '100%':{opacity:1, transform:'translateY(0)'} },
+          glow:     { '0%,100%':{opacity:0.5}, '50%':{opacity:0.85} },
+          pulseDot: { '0%,100%':{transform:'scale(1)', opacity:1}, '50%':{transform:'scale(1.4)', opacity:0.6} },
+        },
+      }
+    }
+  }
+</script>
+
+<style>
+  html, body { background: #070809; }
+  body { font-feature-settings: 'cv11','ss01','ss03'; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: #0c0d11; }
+  ::-webkit-scrollbar-thumb { background: #262a36; border-radius: 8px; border: 2px solid #0c0d11; }
+  ::-webkit-scrollbar-thumb:hover { background: #404657; }
+  ::selection { background: rgba(52,211,153,0.25); color: #ecfdf5; }
+  /* Grid + dot backgrounds for hero / section variety */
+  .grid-bg {
+    background-image:
+      linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+    background-size: 64px 64px;
+    background-position: -1px -1px;
+  }
+  .dot-bg {
+    background-image: radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  /* Halo glows behind hero / accent sections */
+  .halo::before {
+    content: ''; position: absolute; inset: -120px -10% auto auto; width: 760px; height: 760px;
+    background: radial-gradient(closest-side, rgba(52,211,153,0.18), rgba(52,211,153,0) 70%);
+    filter: blur(60px); pointer-events: none; z-index: 0;
+  }
+  .halo-left::before {
+    content: ''; position: absolute; inset: -160px auto auto -10%; width: 720px; height: 720px;
+    background: radial-gradient(closest-side, rgba(96,165,250,0.14), rgba(96,165,250,0) 70%);
+    filter: blur(60px); pointer-events: none; z-index: 0;
+  }
+  /* Gradient text utilities */
+  .gradient-text {
+    background: linear-gradient(120deg, #ffffff 0%, #d4f5e2 40%, #6ee7b7 75%, #34d399 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  /* Glass card utilities */
+  .glass {
+    background: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.01));
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .glass-strong {
+    background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015));
+    border: 1px solid rgba(255,255,255,0.10);
+  }
+  /* Block code style (the .cm/.kw/.st/.fn/.nm spans are syntax-highlight tints) */
+  pre.code {
+    background: #0a0b0f; color: #d6dae5; padding: 18px 20px; border-radius: 10px;
+    overflow-x: auto; font: 12.5px/1.6 'JetBrains Mono', ui-monospace, monospace;
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  pre.code .cm { color: #6b7186; }   /* comment */
+  pre.code .kw { color: #f0abfc; }   /* keyword */
+  pre.code .st { color: #86efac; }   /* string */
+  pre.code .fn { color: #93c5fd; }   /* function name */
+  pre.code .nm { color: #fcd34d; }   /* identifier highlight */
+  /* Section anchor offset (so the sticky nav doesn't cover the heading) */
+  section[id] { scroll-margin-top: 80px; }
+  /* Kanban column min-width */
+  .kanban-col { min-width: 320px; }
+  /* Ticket hover */
+  .ticket { transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
+  .ticket:hover {
+    transform: translateY(-1px);
+    border-color: rgba(255,255,255,0.18);
+    box-shadow: 0 10px 30px -10px rgba(0,0,0,0.6);
+  }
+  /* Modal backdrop */
+  .modal-backdrop { backdrop-filter: blur(12px) saturate(140%); }
+  /* Diagram box utility (for architecture diagram cells) */
+  .diag-box {
+    background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+  }
+  /* Animated arrow line for connecting diagram boxes */
+  .pulse-line {
+    background: linear-gradient(90deg, transparent, rgba(52,211,153,0.6), transparent);
+    background-size: 200% 100%;
+    animation: arrowMove 2.5s linear infinite;
+  }
+  @keyframes arrowMove {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+</style>
+</head>
+<body class="bg-ink-950 text-ink-100 font-sans antialiased">
+
+<!-- ====================================================================== -->
+<!--  STICKY NAV                                                            -->
+<!-- ====================================================================== -->
+<nav class="sticky top-0 z-40 border-b border-white/5 bg-ink-950/80 backdrop-blur-xl">
+  <div class="mx-auto max-w-7xl px-6 lg:px-10 h-16 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-emerald-700 flex items-center justify-center shadow-lg shadow-emerald-500/30">
+        <!-- FILL: optional inline-SVG logo (kept emerald shield by default) -->
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-4 h-4 text-ink-950"><path d="M12 2 4 6v6c0 5 3.5 9.5 8 10 4.5-.5 8-5 8-10V6l-8-4Z"/></svg>
+      </div>
+      <div class="leading-tight">
+        <div class="font-display font-semibold text-sm tracking-tight"><!-- FILL: project · doc title --></div>
+        <div class="text-[11px] text-ink-400 uppercase tracking-[0.18em]">Design Doc · v1.0</div>
+      </div>
+    </div>
+    <div class="hidden md:flex items-center gap-7 text-[13px] text-ink-300">
+      <!-- FILL: 4-6 nav links pointing at section ids -->
+      <a href="#vision" class="hover:text-ink-100 transition">Vision</a>
+      <a href="#architecture" class="hover:text-ink-100 transition">Architecture</a>
+      <a href="#kanban" class="hover:text-ink-100 transition">Roadmap</a>
+      <a href="#dod" class="hover:text-ink-100 transition">DoD</a>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="hidden sm:inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[11px] font-medium text-emerald-300">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse-dot"></span>
+        <!-- FILL: status pill text (Ready · Draft · In review · Shipped) -->
+        Ready to execute
+      </span>
+    </div>
+  </div>
+</nav>
+
+<!-- ====================================================================== -->
+<!--  HERO                                                                  -->
+<!-- ====================================================================== -->
+<section class="relative overflow-hidden grid-bg halo">
+  <div class="absolute inset-0 bg-gradient-to-b from-transparent via-ink-950/60 to-ink-950 pointer-events-none"></div>
+  <div class="relative mx-auto max-w-7xl px-6 lg:px-10 pt-20 pb-28 lg:pt-28 lg:pb-36 z-10">
+    <div class="max-w-4xl">
+      <div class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] font-medium text-ink-300 mb-7 animate-fade-in">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+        <!-- FILL: provenance line (authoring agent · date) -->
+        Authoring agent: [name] · Authored [YYYY-MM-DD]
+      </div>
+      <h1 class="font-display font-bold text-5xl md:text-6xl lg:text-7xl leading-[1.02] tracking-tight animate-fade-in-up">
+        <!-- FILL: punchy two-line headline; second line gets gradient-text -->
+        Headline line one.<br>
+        <span class="gradient-text">Headline punchline.</span>
+      </h1>
+      <p class="mt-7 text-lg md:text-xl text-ink-300 leading-relaxed max-w-3xl animate-fade-in-up">
+        <!-- FILL: 1-2 sentence summary; use <em class="text-ink-100"> for emphasis -->
+        Subtitle: what this document proposes, in one or two crisp sentences with <em class="text-ink-100">light emphasis</em> on the key terms.
+      </p>
+      <p class="mt-3 text-base text-ink-400 max-w-3xl animate-fade-in-up">
+        <!-- FILL: optional second-line summary; ends with a tagged accent phrase -->
+        Optional follow-on line. <span class="text-emerald-300">Key tagline.</span>
+      </p>
+
+      <div class="mt-10 flex flex-wrap items-center gap-3 animate-fade-in-up">
+        <a href="#kanban" class="inline-flex items-center gap-2 rounded-lg bg-emerald-500 text-ink-950 px-5 py-2.5 text-sm font-semibold hover:bg-emerald-400 transition shadow-lg shadow-emerald-500/20">
+          <!-- FILL: primary CTA label + target section -->
+          View the roadmap
+          <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>
+        </a>
+        <a href="#architecture" class="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-5 py-2.5 text-sm font-medium text-ink-200 hover:bg-white/[0.06] transition">
+          See architecture
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats strip: five quick-scan metrics -->
+  <div class="relative z-10 mx-auto max-w-7xl px-6 lg:px-10 pb-16">
+    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 lg:gap-4">
+      <!-- FILL: 5 stat cards. Pattern below; duplicate as needed. -->
+      <div class="glass rounded-xl p-5">
+        <div class="text-[10px] uppercase tracking-[0.18em] text-ink-400 font-medium">Eyebrow label</div>
+        <div class="mt-2 font-display font-semibold text-3xl text-emerald-300">~75</div>
+        <div class="mt-1 text-xs text-ink-400">caption explaining the number</div>
+      </div>
+      <div class="glass rounded-xl p-5">
+        <div class="text-[10px] uppercase tracking-[0.18em] text-ink-400 font-medium">Eyebrow</div>
+        <div class="mt-2 font-display font-semibold text-3xl">7</div>
+        <div class="mt-1 text-xs text-ink-400">caption</div>
+      </div>
+      <div class="glass rounded-xl p-5">
+        <div class="text-[10px] uppercase tracking-[0.18em] text-ink-400 font-medium">Eyebrow</div>
+        <div class="mt-2 font-display font-semibold text-3xl">7</div>
+        <div class="mt-1 text-xs text-ink-400">caption</div>
+      </div>
+      <div class="glass rounded-xl p-5">
+        <div class="text-[10px] uppercase tracking-[0.18em] text-ink-400 font-medium">Eyebrow</div>
+        <div class="mt-2 font-display font-semibold text-3xl">5</div>
+        <div class="mt-1 text-xs text-ink-400">caption</div>
+      </div>
+      <div class="glass rounded-xl p-5 col-span-2 md:col-span-1">
+        <div class="text-[10px] uppercase tracking-[0.18em] text-ink-400 font-medium">Eyebrow</div>
+        <div class="mt-2 font-display font-semibold text-3xl text-emerald-300">5</div>
+        <div class="mt-1 text-xs text-ink-400">caption</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ====================================================================== -->
+<!--  SECTION 01 · VISION (two-column text section)                         -->
+<!-- ====================================================================== -->
+<section id="vision" class="relative py-24 lg:py-28">
+  <div class="mx-auto max-w-7xl px-6 lg:px-10">
+    <div class="grid lg:grid-cols-12 gap-12">
+      <div class="lg:col-span-4">
+        <div class="text-[11px] uppercase tracking-[0.18em] text-emerald-400 font-semibold mb-3">01 · <!-- FILL: section name --></div>
+        <h2 class="font-display font-bold text-4xl tracking-tight leading-tight"><!-- FILL: short two-line heading --></h2>
+      </div>
+      <div class="lg:col-span-8 space-y-5 text-ink-300 leading-relaxed">
+        <!-- FILL: 2-4 paragraphs. Use <em class="text-ink-100"> for emphasis;
+                  use <code class="text-emerald-300 bg-emerald-500/5 border border-emerald-500/20 rounded px-1.5 py-0.5 font-mono text-sm">name</code>
+                  for inline code identifiers. -->
+        <p class="text-lg">Lead paragraph that frames the problem.</p>
+        <p>Supporting paragraph with detail.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ====================================================================== -->
+<!--  SECTION 02 · ARCHITECTURE (diagram + supporting cards)                -->
+<!-- ====================================================================== -->
+<section id="architecture" class="relative py-24 lg:py-28 border-t border-white/5 bg-ink-900/40 dot-bg overflow-hidden halo-left">
+  <div class="relative mx-auto max-w-7xl px-6 lg:px-10 z-10">
+    <div class="max-w-3xl mb-16">
+      <div class="text-[11px] uppercase tracking-[0.18em] text-emerald-400 font-semibold mb-3">02 · Architecture</div>
+      <h2 class="font-display font-bold text-4xl tracking-tight"><!-- FILL: section heading --></h2>
+      <p class="mt-5 text-lg text-ink-300 leading-relaxed"><!-- FILL: section intro paragraph --></p>
+    </div>
+
+    <!-- Diagram: 3-cell layout (left → arrow → big center).
+         Adapt the cell count and the labels for your domain. -->
+    <div class="relative">
+      <div class="grid lg:grid-cols-12 gap-6 items-stretch">
+        <!-- Left -->
+        <div class="lg:col-span-3 flex">
+          <div class="diag-box p-6 w-full">
+            <div class="text-[10px] uppercase tracking-[0.18em] text-ink-400 mb-2">Caller</div>
+            <div class="font-display font-semibold text-xl mb-1"><!-- FILL --></div>
+            <div class="text-sm text-ink-400"><!-- FILL: short caption --></div>
+          </div>
+        </div>
+        <!-- Animated connector -->
+        <div class="hidden lg:flex lg:col-span-1 items-center justify-center">
+          <div class="relative w-full h-px overflow-hidden">
+            <div class="absolute inset-0 pulse-line"></div>
+          </div>
+        </div>
+        <!-- Right (the spotlight cell) -->
+        <div class="lg:col-span-8 flex">
+          <div class="relative w-full diag-box p-6 lg:p-8 ring-1 ring-emerald-500/20 shadow-[0_0_40px_-10px_rgba(52,211,153,0.25)]">
+            <div class="flex items-start justify-between mb-4">
+              <div>
+                <div class="text-[10px] uppercase tracking-[0.18em] text-emerald-400 mb-1">Eyebrow</div>
+                <div class="font-display font-bold text-2xl"><!-- FILL --></div>
+                <div class="text-sm text-ink-400 mt-0.5"><!-- FILL --></div>
+              </div>
+              <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 text-[10px] font-medium text-emerald-300">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse-dot"></span>
+                Live · <code class="font-mono">module.path</code>
+              </span>
+            </div>
+            <!-- Inner highlight box -->
+            <div class="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
+              <div class="text-[10px] uppercase tracking-[0.18em] text-emerald-300 mb-2 font-semibold">Featured items</div>
+              <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs font-mono">
+                <div class="rounded bg-ink-950/60 border border-emerald-500/20 px-2 py-2 text-emerald-200">item_one</div>
+                <div class="rounded bg-ink-950/60 border border-emerald-500/20 px-2 py-2 text-emerald-200">item_two</div>
+                <div class="rounded bg-ink-950/60 border border-emerald-500/20 px-2 py-2 text-emerald-200">item_three</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Supporting cards row beneath the diagram -->
+      <div class="mt-6 grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- FILL: 2-4 supporting cards explaining sub-systems. Pattern: -->
+        <div class="diag-box p-5">
+          <div class="text-[10px] uppercase tracking-[0.18em] text-ink-400 mb-2">Category</div>
+          <div class="font-display font-semibold mb-1">Component name</div>
+          <div class="text-xs text-ink-400 mb-3">One-sentence purpose.</div>
+          <span class="inline-flex text-[10px] font-medium text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded px-2 py-0.5 font-mono">library code</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ====================================================================== -->
+<!--  SECTION 03 · REFERENCE TABLE                                          -->
+<!--  AX-CRITICAL: use a real <table>, not styled divs                      -->
+<!-- ====================================================================== -->
+<section id="reference" class="relative py-24 lg:py-28 border-t border-white/5">
+  <div class="mx-auto max-w-7xl px-6 lg:px-10">
+    <div class="max-w-3xl mb-14">
+      <div class="text-[11px] uppercase tracking-[0.18em] text-emerald-400 font-semibold mb-3">03 · Reference</div>
+      <h2 class="font-display font-bold text-4xl tracking-tight"><!-- FILL --></h2>
+      <p class="mt-5 text-lg text-ink-300 leading-relaxed"><!-- FILL --></p>
+    </div>
+
+    <div class="glass-strong rounded-xl overflow-hidden">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="bg-white/[0.04] border-b border-white/10 text-[11px] uppercase tracking-[0.12em] text-ink-400">
+            <th class="text-left py-3 px-5 font-semibold">Column A</th>
+            <th class="text-left py-3 px-5 font-semibold">Column B</th>
+            <th class="text-left py-3 px-5 font-semibold">Column C</th>
+          </tr>
+        </thead>
+        <tbody class="text-ink-200">
+          <!-- FILL: rows. Use <code class="font-mono text-xs"> for identifiers. -->
+          <tr class="border-b border-white/5 hover:bg-white/[0.02]">
+            <td class="py-3 px-5">Row label</td>
+            <td class="py-3 px-5"><span class="text-emerald-300 font-medium">Library</span></td>
+            <td class="py-3 px-5"><code class="font-mono text-xs">api.entry_point()</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ====================================================================== -->
+<!--  SECTION 04 · KANBAN BOARD                                             -->
+<!--  Delete this whole section AND the modal AND the script block if your -->
+<!--  doc doesn't have a roadmap.                                           -->
+<!-- ====================================================================== -->
+<section id="kanban" class="relative py-24 lg:py-28 border-t border-white/5 bg-ink-900/40 dot-bg overflow-hidden">
+  <div class="mx-auto max-w-7xl px-6 lg:px-10">
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 mb-10">
+      <div class="max-w-3xl">
+        <div class="text-[11px] uppercase tracking-[0.18em] text-emerald-400 font-semibold mb-3">04 · Roadmap</div>
+        <h2 class="font-display font-bold text-4xl tracking-tight">The board.</h2>
+        <p class="mt-5 text-lg text-ink-300 leading-relaxed">Click any ticket for the full Jira-style detail view.</p>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 text-[11px] text-ink-400">
+        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-white/[0.04] border border-white/10"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Shipped</div>
+        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-white/[0.04] border border-white/10"><span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span> Ready</div>
+        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-white/[0.04] border border-white/10"><span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span> Backlog</div>
+      </div>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-5 lg:gap-6">
+      <div class="kanban-col">
+        <div class="flex items-center justify-between mb-4 px-1">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <h3 class="font-display font-semibold text-lg">Shipped</h3>
+          </div>
+          <span class="text-xs text-ink-400 font-mono" id="count-done"></span>
+        </div>
+        <div class="space-y-3" id="col-done"></div>
+      </div>
+      <div class="kanban-col">
+        <div class="flex items-center justify-between mb-4 px-1">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+            <h3 class="font-display font-semibold text-lg">Ready to start</h3>
+          </div>
+          <span class="text-xs text-ink-400 font-mono" id="count-ready"></span>
+        </div>
+        <div class="space-y-3" id="col-ready"></div>
+      </div>
+      <div class="kanban-col">
+        <div class="flex items-center justify-between mb-4 px-1">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-blue-400"></span>
+            <h3 class="font-display font-semibold text-lg">Backlog</h3>
+          </div>
+          <span class="text-xs text-ink-400 font-mono" id="count-backlog"></span>
+        </div>
+        <div class="space-y-3" id="col-backlog"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ====================================================================== -->
+<!--  SECTION 05 · DEFINITION OF DONE                                       -->
+<!-- ====================================================================== -->
+<section id="dod" class="relative py-24 lg:py-28 border-t border-white/5">
+  <div class="mx-auto max-w-7xl px-6 lg:px-10">
+    <div class="max-w-3xl mb-12">
+      <div class="text-[11px] uppercase tracking-[0.18em] text-emerald-400 font-semibold mb-3">05 · Done means done</div>
+      <h2 class="font-display font-bold text-4xl tracking-tight">Definition of done.</h2>
+      <p class="mt-5 text-lg text-ink-300 leading-relaxed">Each item is verifiable with evidence — test output, gate logs, or a transcript.</p>
+    </div>
+    <div class="grid md:grid-cols-2 gap-3">
+      <!-- FILL: DoD items. Pattern: -->
+      <label class="flex items-start gap-3 p-4 rounded-lg glass hover:bg-white/[0.06] transition cursor-default">
+        <input type="checkbox" class="mt-1 accent-emerald-500" />
+        <div class="text-sm text-ink-200">DoD item with a concrete verification.</div>
+      </label>
+    </div>
+  </div>
+</section>
+
+<!-- ====================================================================== -->
+<!--  SECTION 06 · OFFICIAL DOCUMENTATION                                   -->
+<!-- ====================================================================== -->
+<section id="docs" class="relative py-24 lg:py-28 border-t border-white/5 bg-ink-900/40 dot-bg">
+  <div class="mx-auto max-w-7xl px-6 lg:px-10">
+    <div class="max-w-3xl mb-12">
+      <div class="text-[11px] uppercase tracking-[0.18em] text-emerald-400 font-semibold mb-3">06 · References</div>
+      <h2 class="font-display font-bold text-4xl tracking-tight">Official documentation.</h2>
+      <p class="mt-5 text-lg text-ink-300 leading-relaxed">Validate every external API against its official docs before writing the call.</p>
+    </div>
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <!-- FILL: 6-9 doc cards. Pattern: -->
+      <a href="https://example.com" target="_blank" rel="noopener" class="glass rounded-xl p-5 hover:bg-white/[0.06] hover:border-emerald-500/30 transition group">
+        <div class="text-[10px] uppercase tracking-[0.12em] text-emerald-400 font-semibold mb-2">Library / domain</div>
+        <div class="font-display font-semibold mb-1 group-hover:text-emerald-300 transition">Page title</div>
+        <div class="text-xs text-ink-400 break-all">example.com/docs/page</div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ====================================================================== -->
+<!--  FOOTER                                                                -->
+<!-- ====================================================================== -->
+<footer class="relative py-12 border-t border-white/5">
+  <div class="mx-auto max-w-7xl px-6 lg:px-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 text-sm text-ink-400">
+    <div class="flex items-center gap-3">
+      <div class="w-7 h-7 rounded-md bg-gradient-to-br from-emerald-400 to-emerald-700 flex items-center justify-center">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-3.5 h-3.5 text-ink-950"><path d="M12 2 4 6v6c0 5 3.5 9.5 8 10 4.5-.5 8-5 8-10V6l-8-4Z"/></svg>
+      </div>
+      <!-- FILL: project · doc title · version -->
+      <span>Project · Design Doc v1.0</span>
+    </div>
+    <!-- FILL: provenance line -->
+    <div class="text-xs">Authored by [name] on [YYYY-MM-DD].</div>
+  </div>
+</footer>
+
+<!-- ====================================================================== -->
+<!--  MODAL  (only required if you have a kanban)                           -->
+<!-- ====================================================================== -->
+<div id="ticket-modal" class="fixed inset-0 z-50 hidden items-center justify-center px-4 py-8 modal-backdrop bg-black/70">
+  <div class="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-ink-900 border border-white/10 shadow-2xl">
+    <button id="modal-close" class="absolute top-4 right-4 w-9 h-9 rounded-lg bg-white/[0.04] border border-white/10 hover:bg-white/[0.08] flex items-center justify-center text-ink-300 hover:text-ink-100 transition" aria-label="Close">
+      <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+    </button>
+    <div id="modal-content" class="p-7 md:p-9"></div>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!--  KANBAN DATA + MODAL JS                                                -->
+<!--  Edit the TICKETS object to populate the board. Delete the whole       -->
+<!--  <script> block if you don't have a kanban.                            -->
+<!-- ====================================================================== -->
+<script>
+  /* ============================================================
+     TICKETS — populate this object with your roadmap items.
+     One sample of each column shown; copy the shape, add more.
+     ============================================================ */
+  const TICKETS = {
+    'PROJ-100': {
+      column: 'done', status: 'Done', type: 'Foundation', priority: 'High', effort: 'Shipped',
+      title: 'Example shipped ticket',
+      summary: 'One-sentence summary shown on the kanban card.',
+      description: 'Longer description shown in the modal. <code class="font-mono">HTML allowed</code> for inline code, emphasis, etc.',
+      acceptance: [
+        'First acceptance criterion (a verifiable check).',
+        'Second acceptance criterion.',
+      ],
+      files: ['path/to/file.py', 'path/to/other.ts'],
+      labels: ['foundation', 'shipped'],
+    },
+    'PROJ-200': {
+      column: 'ready', status: 'Ready', type: 'Data + Cleanup', priority: 'Highest', effort: '~1 hour',
+      title: 'Example ready ticket',
+      summary: 'A task that is fully scoped and ready to start.',
+      description: 'Full description with implementation guidance.',
+      acceptance: ['Acceptance criterion A.', 'Acceptance criterion B.'],
+      files: ['path/to/scoped/file.py'],
+      labels: ['cleanup'],
+      linked: ['PROJ-201'],
+    },
+    'PROJ-300': {
+      column: 'backlog', status: 'Backlog', type: 'New module', priority: 'Medium', effort: '~120 lines',
+      title: 'Example backlog ticket',
+      summary: 'A task that is identified but not yet scheduled.',
+      description: 'Backlog item description.',
+      acceptance: ['Acceptance criterion.'],
+      files: ['path/to/new/module.py'],
+      labels: ['feature', 'backlog'],
+    },
+  };
+
+  /* ============================================================
+     TYPE_STYLES — map type label → dot + chip colors.
+     Add new types here as you add tickets.
+     ============================================================ */
+  const TYPE_STYLES = {
+    'Foundation':    { dot: 'bg-emerald-400', tag: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' },
+    'Settings':      { dot: 'bg-blue-400',    tag: 'text-blue-300 bg-blue-500/10 border-blue-500/30' },
+    'Runtime':       { dot: 'bg-purple-400',  tag: 'text-purple-300 bg-purple-500/10 border-purple-500/30' },
+    'Discovery':     { dot: 'bg-cyan-400',    tag: 'text-cyan-300 bg-cyan-500/10 border-cyan-500/30' },
+    'Docs':          { dot: 'bg-amber-400',   tag: 'text-amber-300 bg-amber-500/10 border-amber-500/30' },
+    'Data + Cleanup':{ dot: 'bg-rose-400',    tag: 'text-rose-300 bg-rose-500/10 border-rose-500/30' },
+    'Dependencies':  { dot: 'bg-orange-400',  tag: 'text-orange-300 bg-orange-500/10 border-orange-500/30' },
+    'New module':    { dot: 'bg-emerald-400', tag: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' },
+    'Providers':     { dot: 'bg-purple-400',  tag: 'text-purple-300 bg-purple-500/10 border-purple-500/30' },
+  };
+
+  const PRIORITY_STYLES = {
+    'Highest': { color: 'text-rose-300',  icon: '▲▲' },
+    'High':    { color: 'text-amber-300', icon: '▲' },
+    'Medium':  { color: 'text-blue-300',  icon: '=' },
+    'Low':     { color: 'text-ink-400',   icon: '▼' },
+  };
+
+  const STATUS_PILL = {
+    'Done':    'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+    'Ready':   'bg-amber-500/15 text-amber-300 border-amber-500/30',
+    'Backlog': 'bg-blue-500/15 text-blue-300 border-blue-500/30',
+    'In progress': 'bg-purple-500/15 text-purple-300 border-purple-500/30',
+  };
+
+  /* ============================================================
+     Rendering — should not need to edit below.
+     ============================================================ */
+  function renderTicketCard(key, t) {
+    const type = TYPE_STYLES[t.type] || TYPE_STYLES['New module'];
+    const pri = PRIORITY_STYLES[t.priority] || PRIORITY_STYLES['Medium'];
+    const labels = (t.labels || []).slice(0, 3).map(l =>
+      `<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.04] border border-white/10 text-ink-300">${l}</span>`
+    ).join('');
+    return `
+      <article class="ticket glass rounded-xl p-4 cursor-pointer" data-ticket="${key}">
+        <div class="flex items-start justify-between gap-3 mb-2">
+          <div class="flex items-center gap-1.5">
+            <span class="font-mono text-[11px] text-ink-400">${key}</span>
+            <span class="text-ink-600">·</span>
+            <span class="${pri.color} font-mono text-[11px] font-semibold" title="Priority: ${t.priority}">${pri.icon}</span>
+          </div>
+          <span class="inline-flex items-center gap-1.5 text-[10px] font-medium px-2 py-0.5 rounded-full border ${type.tag}">
+            <span class="w-1.5 h-1.5 rounded-full ${type.dot}"></span>
+            ${t.type}
+          </span>
+        </div>
+        <h4 class="font-display font-semibold text-base leading-snug mb-2 text-ink-100">${t.title}</h4>
+        <p class="text-xs text-ink-400 leading-relaxed mb-3 line-clamp-2">${t.summary}</p>
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex flex-wrap gap-1">${labels}</div>
+          <span class="text-[10px] font-mono text-ink-500 whitespace-nowrap">${t.effort}</span>
+        </div>
+      </article>
+    `;
+  }
+
+  function renderModal(key, t) {
+    const type = TYPE_STYLES[t.type] || TYPE_STYLES['New module'];
+    const pri = PRIORITY_STYLES[t.priority] || PRIORITY_STYLES['Medium'];
+    const acceptance = (t.acceptance || []).map(a => `
+      <li class="flex gap-2.5 items-start">
+        <svg class="w-4 h-4 mt-0.5 text-emerald-400 shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+        <span class="text-sm text-ink-200 leading-relaxed">${a}</span>
+      </li>`).join('');
+    const files = (t.files || []).map(f => `<code class="font-mono text-xs bg-white/[0.04] border border-white/10 rounded px-2 py-1 text-ink-200">${f}</code>`).join(' ');
+    const labels = (t.labels || []).map(l => `<span class="text-[11px] font-mono px-2 py-0.5 rounded bg-white/[0.04] border border-white/10 text-ink-300">${l}</span>`).join(' ');
+    const linked = (t.linked || []).map(l => `<button class="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20 transition" onclick="openModal('${l}')">${l}</button>`).join(' ');
+
+    return `
+      <div class="flex items-center gap-2 mb-3 text-xs">
+        <span class="font-mono text-ink-400">${key}</span>
+        <span class="text-ink-600">/</span>
+        <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border ${type.tag}">
+          <span class="w-1.5 h-1.5 rounded-full ${type.dot}"></span>
+          ${t.type}
+        </span>
+        <span class="inline-flex items-center gap-1 ${pri.color} font-mono text-[11px] font-semibold ml-1">${pri.icon} ${t.priority}</span>
+        <span class="ml-auto inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full border ${STATUS_PILL[t.status] || STATUS_PILL['Backlog']}">${t.status}</span>
+      </div>
+      <h2 class="font-display font-bold text-2xl md:text-3xl tracking-tight mb-3 leading-tight">${t.title}</h2>
+      <p class="text-base text-ink-300 leading-relaxed mb-7">${t.summary}</p>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-7">
+        <div class="glass rounded-lg p-3"><div class="text-[10px] uppercase tracking-[0.12em] text-ink-400 mb-1">Status</div><div class="text-sm font-medium text-ink-100">${t.status}</div></div>
+        <div class="glass rounded-lg p-3"><div class="text-[10px] uppercase tracking-[0.12em] text-ink-400 mb-1">Priority</div><div class="text-sm font-medium ${pri.color}">${pri.icon} ${t.priority}</div></div>
+        <div class="glass rounded-lg p-3"><div class="text-[10px] uppercase tracking-[0.12em] text-ink-400 mb-1">Effort</div><div class="text-sm font-medium text-ink-100">${t.effort}</div></div>
+        <div class="glass rounded-lg p-3"><div class="text-[10px] uppercase tracking-[0.12em] text-ink-400 mb-1">Type</div><div class="text-sm font-medium text-ink-100">${t.type}</div></div>
+      </div>
+      <div class="mb-6"><h3 class="text-[11px] uppercase tracking-[0.18em] text-emerald-400 font-semibold mb-2.5">Description</h3><p class="text-sm text-ink-300 leading-relaxed">${t.description}</p></div>
+      ${t.acceptance ? `<div class="mb-6"><h3 class="text-[11px] uppercase tracking-[0.18em] text-emerald-400 font-semibold mb-2.5">Acceptance criteria</h3><ul class="space-y-2">${acceptance}</ul></div>` : ''}
+      ${t.files && t.files.length ? `<div class="mb-6"><h3 class="text-[11px] uppercase tracking-[0.18em] text-emerald-400 font-semibold mb-2.5">Files affected</h3><div class="flex flex-wrap gap-1.5">${files}</div></div>` : ''}
+      ${t.linked && t.linked.length ? `<div class="mb-6"><h3 class="text-[11px] uppercase tracking-[0.18em] text-emerald-400 font-semibold mb-2.5">Linked tickets</h3><div class="flex flex-wrap gap-1.5">${linked}</div></div>` : ''}
+      ${labels ? `<div><h3 class="text-[11px] uppercase tracking-[0.18em] text-emerald-400 font-semibold mb-2.5">Labels</h3><div class="flex flex-wrap gap-1.5">${labels}</div></div>` : ''}
+    `;
+  }
+
+  function buildBoard() {
+    const cols = { done: [], ready: [], backlog: [] };
+    Object.entries(TICKETS).forEach(([k, t]) => { cols[t.column].push(renderTicketCard(k, t)); });
+    document.getElementById('col-done').innerHTML = cols.done.join('');
+    document.getElementById('col-ready').innerHTML = cols.ready.join('');
+    document.getElementById('col-backlog').innerHTML = cols.backlog.join('');
+    document.getElementById('count-done').textContent = `${cols.done.length} ticket${cols.done.length===1?'':'s'}`;
+    document.getElementById('count-ready').textContent = `${cols.ready.length} ticket${cols.ready.length===1?'':'s'}`;
+    document.getElementById('count-backlog').textContent = `${cols.backlog.length} ticket${cols.backlog.length===1?'':'s'}`;
+    document.querySelectorAll('[data-ticket]').forEach(el => {
+      el.addEventListener('click', () => openModal(el.dataset.ticket));
+    });
+  }
+
+  const modal = document.getElementById('ticket-modal');
+  const modalContent = document.getElementById('modal-content');
+  const modalClose = document.getElementById('modal-close');
+
+  function openModal(key) {
+    const t = TICKETS[key];
+    if (!t) return;
+    modalContent.innerHTML = renderModal(key, t);
+    modal.classList.remove('hidden'); modal.classList.add('flex');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeModal() {
+    modal.classList.add('hidden'); modal.classList.remove('flex');
+    document.body.style.overflow = '';
+  }
+  modalClose.addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+
+  buildBoard();
+</script>
+
+</body>
+</html>

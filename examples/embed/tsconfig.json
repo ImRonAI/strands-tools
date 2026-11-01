@@ -1,0 +1,8 @@
+{
+  "extends": "../../packages/app/tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src", "tests", "build.mjs", "serve.mjs"],
+  "exclude": []
+}

@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Acme Telecom Console — Oubliai workspace embed</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%230f766e'/%3E%3C/svg%3E" />
+    <style>
+      /*
+       * Only the customer's own page is styled here. The embedded workspace
+       * is a separate document on the sandbox origin and receives Acme's
+       * design tokens through the official host-context notification, not
+       * through CSS injection.
+       */
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--color-background-secondary, #fafaf9);
+        color: var(--color-text-primary, #1c1917);
+        font-family: var(--font-sans, system-ui, sans-serif);
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 16px 24px;
+        background: var(--color-background-primary, #fff);
+        border-bottom: var(--border-width-regular, 1px) solid
+          var(--color-border-secondary, #e7e5e4);
+      }
+      h1 { margin: 0; font-size: 20px; }
+      main {
+        display: grid;
+        gap: 20px;
+        width: min(100%, 1200px);
+        margin: 0 auto;
+        padding: 24px;
+      }
+      section {
+        padding: 20px;
+        background: var(--color-background-primary, #fff);
+        border: var(--border-width-regular, 1px) solid
+          var(--color-border-primary, #e7e5e4);
+        border-radius: var(--border-radius-lg, 10px);
+      }
+      h2 { margin: 0 0 12px; font-size: 16px; }
+      form, .row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: end;
+        gap: 12px;
+      }
+      label { display: grid; gap: 4px; font-size: 13px; }
+      input, select, button {
+        min-height: 38px;
+        padding: 6px 12px;
+        border: var(--border-width-regular, 1px) solid
+          var(--color-border-secondary, #d6d3d1);
+        border-radius: var(--border-radius-md, 6px);
+        background: var(--color-background-primary, #fff);
+        color: var(--color-text-primary, inherit);
+        font: inherit;
+      }
+      input { min-width: 320px; }
+      button {
+        cursor: pointer;
+        font-weight: 600;
+      }
+      button:disabled { cursor: not-allowed; opacity: 0.5; }
+      #embed-banner {
+        margin: 0 0 12px;
+        padding: 10px 12px;
+        border-radius: var(--border-radius-md, 6px);
+        background: var(--color-background-danger, #fee2e2);
+        color: var(--color-text-danger, #991b1b);
+      }
+      #view:empty { display: none; }
+      #app-frame { display: block; }
+      footer { color: var(--color-text-secondary, #57534e); font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Acme Telecom Console</h1>
+      <button id="theme-toggle" type="button">Theme</button>
+    </header>
+    <main>
+      <section>
+        <h2>Your Oubliai connection</h2>
+        <p id="embed-banner" role="alert" hidden></p>
+        <form onsubmit="return false">
+          <label>
+            MCP URL
+            <input id="mcp-url" name="url" type="url" autocomplete="off" placeholder="https://mcp.example.com/mcp" />
+          </label>
+          <label>
+            Bearer token
+            <input id="mcp-token" name="token" type="password" autocomplete="off" />
+          </label>
+          <button id="connect" type="button">Connect</button>
+        </form>
+      </section>
+      <section>
+        <h2>Workspace</h2>
+        <div class="row">
+          <label>
+            Domain
+            <select id="workspace-select" disabled></select>
+          </label>
+          <button id="open-workspace" type="button" disabled>Open</button>
+          <button id="close-workspace" type="button" disabled>Close</button>
+        </div>
+      </section>
+      <div id="view"></div>
+      <footer>
+        The workspace above is an MCP App rendered by the official
+        <code>@modelcontextprotocol/ext-apps</code> sandbox on a separate origin.
+      </footer>
+    </main>
+    <script type="module" src="/embed.js"></script>
+  </body>
+</html>

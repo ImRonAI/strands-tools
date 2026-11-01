@@ -1,0 +1,4 @@
+interface:
+  display_name: "FHIR R4 API Design"
+  short_description: "Design or review FHIR R4 search queries, operations, validation, and workflow"
+  default_prompt: "Use $health-fhir-api-design to design or review FHIR R4 API interactions. In design mode (default), describe your requirements and the skill will recommend search queries, operations, validation strategy, and custom SearchParameter or OperationDefinition resources as needed. In review mode, provide an existing design or query set and the skill will check it for correctness, missing-data safety, and server compatibility issues."

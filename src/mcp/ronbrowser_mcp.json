@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "electron-playwright-mcp": {
+      "command": "/Users/tims-stuff/RonBrowserRebuild/venv/bin/electron-playwright-mcp",
+      "env": {
+        "ELECTRON_PLAYWRIGHT_MCP_ELECTRON_URL": "http://localhost:3000/electron",
+        "ELECTRON_PLAYWRIGHT_MCP_PLAYWRIGHT_URL": "http://localhost:8931/mcp",
+        "ELECTRON_PLAYWRIGHT_MCP_CDP_URL": "http://localhost:9222"
+      }
+    }
+  }
+}

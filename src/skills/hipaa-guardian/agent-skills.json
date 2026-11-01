@@ -1,0 +1,250 @@
+{
+  "name": "hipaa-guardian",
+  "version": "1.2.0",
+  "description": "HIPAA compliance skill for PHI/PII detection, code scanning, healthcare format support (FHIR/HL7/CDA), auth gate detection, log safety audits, and CI/CD integration. Detects all 18 HIPAA Safe Harbor identifiers.",
+  "author": {
+    "name": "1mangesh1",
+    "url": "https://github.com/1Mangesh1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/1Mangesh1/dev-skills"
+  },
+  "license": "MIT",
+  "keywords": [
+    "hipaa",
+    "phi",
+    "pii",
+    "healthcare",
+    "compliance",
+    "security",
+    "audit",
+    "detection",
+    "privacy",
+    "protected-health-information",
+    "fhir",
+    "hl7",
+    "cda",
+    "pre-commit",
+    "authentication",
+    "logging"
+  ],
+  "categories": [
+    "security",
+    "compliance",
+    "healthcare",
+    "data-privacy"
+  ],
+  "skills": [
+    {
+      "name": "hipaa-guardian",
+      "path": ".",
+      "entry": "SKILL.md",
+      "invocation": {
+        "commands": [
+          "/hipaa-guardian",
+          "/hipaa",
+          "/phi-scan"
+        ],
+        "triggers": [
+          "scan for PHI",
+          "detect PII",
+          "HIPAA compliance check",
+          "audit for protected health information",
+          "find sensitive healthcare data",
+          "generate HIPAA audit report",
+          "check PHI exposure",
+          "healthcare data privacy",
+          "scan FHIR resources",
+          "check HL7 messages",
+          "scan logs for PHI",
+          "check authentication on PHI endpoints",
+          "API response PHI check"
+        ]
+      },
+      "capabilities": [
+        {
+          "name": "phi-detection",
+          "description": "Detect all 18 HIPAA Safe Harbor identifiers in data files"
+        },
+        {
+          "name": "code-scanning",
+          "description": "Scan source code for PHI leakage in strings, comments, fixtures"
+        },
+        {
+          "name": "healthcare-formats",
+          "description": "Detect PHI in FHIR R4, HL7 v2.x, CDA/C-CDA, and X12 EDI formats"
+        },
+        {
+          "name": "auth-gate-detection",
+          "description": "Find API endpoints exposing PHI without authentication"
+        },
+        {
+          "name": "log-safety-audit",
+          "description": "Detect PHI leaking into logging statements"
+        },
+        {
+          "name": "api-response-check",
+          "description": "Find unmasked PHI exposure in API responses"
+        },
+        {
+          "name": "risk-scoring",
+          "description": "Score findings 0-100 based on sensitivity, exposure, volume"
+        },
+        {
+          "name": "hipaa-mapping",
+          "description": "Map findings to Privacy Rule, Security Rule, Breach Rule sections"
+        },
+        {
+          "name": "audit-reports",
+          "description": "Generate compliance reports with executive summaries"
+        },
+        {
+          "name": "remediation",
+          "description": "Provide step-by-step remediation playbooks"
+        },
+        {
+          "name": "control-validation",
+          "description": "Check security controls like gitignore, pre-commit hooks"
+        },
+        {
+          "name": "ci-cd-integration",
+          "description": "Pre-commit hooks and GitHub Actions for automated scanning"
+        }
+      ],
+      "tools": {
+        "required": ["read", "glob", "grep"],
+        "optional": ["bash", "write"]
+      },
+      "scripts": [
+        {
+          "name": "detect-phi",
+          "path": "./scripts/detect-phi.py",
+          "runtime": "python3",
+          "description": "PHI detection for data files (supports FHIR, HL7, CDA)"
+        },
+        {
+          "name": "scan-code",
+          "path": "./scripts/scan-code.py",
+          "runtime": "python3",
+          "description": "Code scanning for PHI leakage"
+        },
+        {
+          "name": "scan-auth",
+          "path": "./scripts/scan-auth.py",
+          "runtime": "python3",
+          "description": "Authentication gate detection for PHI endpoints"
+        },
+        {
+          "name": "scan-logs",
+          "path": "./scripts/scan-logs.py",
+          "runtime": "python3",
+          "description": "PHI detection in logging statements"
+        },
+        {
+          "name": "scan-response",
+          "path": "./scripts/scan-response.py",
+          "runtime": "python3",
+          "description": "API response PHI exposure detection"
+        },
+        {
+          "name": "generate-report",
+          "path": "./scripts/generate-report.py",
+          "runtime": "python3",
+          "description": "Audit report generation"
+        },
+        {
+          "name": "validate-controls",
+          "path": "./scripts/validate-controls.sh",
+          "runtime": "bash",
+          "description": "Security controls validation"
+        },
+        {
+          "name": "pre-commit-hook",
+          "path": "./scripts/pre-commit-hook.sh",
+          "runtime": "bash",
+          "description": "Git pre-commit hook for CI/CD integration"
+        }
+      ],
+      "references": [
+        {
+          "name": "hipaa-identifiers",
+          "path": "./references/hipaa-identifiers.md"
+        },
+        {
+          "name": "detection-patterns",
+          "path": "./references/detection-patterns.md"
+        },
+        {
+          "name": "code-scanning",
+          "path": "./references/code-scanning.md"
+        },
+        {
+          "name": "healthcare-formats",
+          "path": "./references/healthcare-formats.md"
+        },
+        {
+          "name": "auth-patterns",
+          "path": "./references/auth-patterns.md"
+        },
+        {
+          "name": "logging-safety",
+          "path": "./references/logging-safety.md"
+        },
+        {
+          "name": "api-security",
+          "path": "./references/api-security.md"
+        },
+        {
+          "name": "privacy-rule",
+          "path": "./references/privacy-rule.md"
+        },
+        {
+          "name": "security-rule",
+          "path": "./references/security-rule.md"
+        },
+        {
+          "name": "breach-rule",
+          "path": "./references/breach-rule.md"
+        },
+        {
+          "name": "risk-scoring",
+          "path": "./references/risk-scoring.md"
+        }
+      ]
+    }
+  ],
+  "compatibility": {
+    "agents": [
+      {
+        "name": "claude-code",
+        "minVersion": "1.0.0"
+      },
+      {
+        "name": "cursor",
+        "minVersion": "0.40.0"
+      },
+      {
+        "name": "windsurf",
+        "minVersion": "1.0.0"
+      },
+      {
+        "name": "aider",
+        "minVersion": "0.50.0"
+      },
+      {
+        "name": "continue",
+        "minVersion": "0.8.0"
+      },
+      {
+        "name": "cline",
+        "minVersion": "2.0.0"
+      }
+    ],
+    "platforms": ["macos", "linux", "windows"],
+    "languages": ["python", "javascript", "typescript", "java", "go", "ruby", "csharp", "sql"]
+  },
+  "requirements": {
+    "python": ">=3.8"
+  }
+}

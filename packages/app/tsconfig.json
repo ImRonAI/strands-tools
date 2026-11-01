@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true
+  },
+  "include": ["src", "tests", "build.mjs", "vitest.config.ts", "playwright.config.ts"],
+  // Parallel-worker scope exclusions — each owning worker re-enables strict
+  // checking for their subtree when they land it:
+  //   host worker:   src/host, tests/e2e
+  "exclude": ["src/host", "tests/e2e"]
+}

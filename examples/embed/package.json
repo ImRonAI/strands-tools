@@ -1,0 +1,28 @@
+{
+  "name": "strands-example-embed",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Third-party page embedding a Strands Tools $prefab workspace through the packages/app host modules and the official two-origin MCP Apps sandbox.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node build.mjs",
+    "serve": "node serve.mjs",
+    "test:e2e": "playwright test -c tests/playwright.config.ts"
+  },
+  "dependencies": {
+    "strands-app": "*",
+    "@modelcontextprotocol/ext-apps": "2.0.3",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "esbuild": "0.25.12",
+    "@playwright/test": "1.63.0",
+    "@types/node": "^22",
+    "@types/express": "^5"
+  }
+}

@@ -1,0 +1,30 @@
+[
+  {
+    "tool_glob": "telnyx_*",
+    "endpoints": [
+      "messages send",
+      "calls dial",
+      "number orders create",
+      "porting",
+      "10dlc",
+      "fax send"
+    ],
+    "category": "telecommunications"
+  },
+  {
+    "tool_glob": "*stripe*",
+    "category": "payments"
+  },
+  {
+    "tool_glob": "*resend*",
+    "category": "email"
+  },
+  {
+    "tool_glob": "*buffer*",
+    "category": "social"
+  },
+  {
+    "tool_glob": "*ads*",
+    "category": "advertising"
+  }
+]

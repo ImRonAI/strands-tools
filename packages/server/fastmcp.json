@@ -1,0 +1,13 @@
+{
+  "$schema": "https://gofastmcp.com/public/schemas/fastmcp.json/v1.json",
+  "source": {
+    "type": "filesystem",
+    "path": "src/strands_server/__main__.py",
+    "entrypoint": "create_server"
+  },
+  "deployment": {
+    "transport": "http",
+    "path": "/mcp",
+    "env": {}
+  }
+}

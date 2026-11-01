@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "strands-tools": {
+      "url": "http://127.0.0.1:8000/mcp",
+      "transport": "http",
+      "auth": "oauth",
+      "description": "Strands Tools FastMCP Server (12+ Strands tool suites, Pattern #2 & #3 AgentSkills, Generative UI, and 14 FastMCPApp workspaces)."
+    },
+    "rea": {
+      "command": "node",
+      "args": ["src/mcp/rea/scripts/rea.mjs", "mcp"],
+      "description": "Non-Strands REA (Reverse Engineer Anything) MCP server proxied by strands_client."
+    }
+  }
+}

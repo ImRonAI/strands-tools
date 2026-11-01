@@ -1,0 +1,24 @@
+{
+  "family": "cms-mcp-task",
+  "networkMode": "awsvpc",
+  "containerDefinitions": [
+    {
+      "name": "cms-mcp-container",
+      "image": "413957722741.dkr.ecr.us-east-1.amazonaws.com/cms-coverage-mcp:latest",
+      "cpu": 512,
+      "memory": 1024,
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "hostPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "essential": true
+    }
+  ],
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::413957722741:role/ecsTaskExecutionRole"
+}
