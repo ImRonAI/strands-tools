@@ -750,7 +750,8 @@ def create_skill_agent_tool(
             logger.info(f"Skill '{skill.name}' execution completed")
 
             if result is not None:
-                yield str(result.message) if hasattr(result, "message") else str(result)
+                text_out = str(result).strip()
+                yield text_out if text_out else (str(result.message) if hasattr(result, "message") else str(result))
             else:
                 yield f"Skill '{skill.name}' completed successfully"
 
