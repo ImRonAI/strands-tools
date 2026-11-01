@@ -2760,58 +2760,45 @@ wheels = [
 ]
 
 [[package]]
-name = "strands-agents"
-version = "1.63.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "boto3" },
-    { name = "botocore" },
-    { name = "docstring-parser" },
-    { name = "httpx" },
-    { name = "jsonschema" },
-    { name = "mcp" },
-    { name = "opentelemetry-api" },
-    { name = "opentelemetry-instrumentation-threading" },
-    { name = "opentelemetry-sdk" },
-    { name = "pydantic" },
-    { name = "pyyaml" },
-    { name = "typing-extensions" },
-    { name = "watchdog" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/a6/ab/74fc54111f3009fc52337afd84ee27c02df7c0b932ba471a84a8ba15a2a7/strands_agents-1.63.0.tar.gz", hash = "sha256:b6ac864ac3726b9d5566fecf09688ab12d00fd6f16379ad1c91465ae9d197bfb", size = 1929378, upload-time = "2026-10-30T19:53:37.774Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/5f/85/37b156ba498cadd833c806c9fe0ef137433950219fe335f368438c65a3a2/strands_agents-1.63.0-py3-none-any.whl", hash = "sha256:fc0a140943855c0199a83fe5a78fc07f1e82ef7d60592538c2d52793121980f0", size = 972613, upload-time = "2026-10-30T19:53:35.714Z" },
-]
-
-[[package]]
 name = "strands-tools-fastmcp"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "boto3" },
+    { name = "botocore" },
     { name = "ccxt" },
     { name = "deno" },
+    { name = "docstring-parser" },
     { name = "fastmcp", extra = ["apps", "code-mode", "tasks"] },
     { name = "fastmcp-tasks" },
     { name = "google-api-python-client" },
     { name = "google-auth-httplib2" },
     { name = "google-auth-oauthlib" },
     { name = "google-genai" },
+    { name = "httpx" },
     { name = "httpx2" },
     { name = "jinja2" },
+    { name = "jsonschema" },
     { name = "mcp" },
     { name = "mcp-types" },
     { name = "openpyxl" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-instrumentation-threading" },
+    { name = "opentelemetry-sdk" },
     { name = "prefab-ui" },
     { name = "py-key-value-aio", extra = ["filetree", "redis", "wrappers-encryption"] },
+    { name = "pydantic" },
     { name = "pydantic-monty" },
     { name = "pypdf" },
     { name = "pyperclip" },
     { name = "python-dotenv" },
+    { name = "pyyaml" },
     { name = "qrcode" },
     { name = "rank-bm25" },
-    { name = "strands-agents" },
+    { name = "typing-extensions" },
     { name = "utcp" },
     { name = "utcp-http" },
+    { name = "watchdog" },
     { name = "youtube-transcript-api" },
 ]
 
@@ -2823,32 +2810,43 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "boto3", specifier = ">=1.34.0" },
+    { name = "botocore", specifier = ">=1.34.0" },
     { name = "ccxt", specifier = ">=4.0.0" },
     { name = "deno", specifier = "==2.9.7" },
+    { name = "docstring-parser", specifier = ">=0.15" },
     { name = "fastmcp", extras = ["apps", "code-mode", "tasks"], specifier = "==4.1.0" },
     { name = "fastmcp-tasks", specifier = "==4.1.0" },
     { name = "google-api-python-client", specifier = ">=2.100.0" },
     { name = "google-auth-httplib2", specifier = ">=0.2.0" },
     { name = "google-auth-oauthlib", specifier = ">=1.2.0" },
     { name = "google-genai", specifier = ">=2.0.0" },
+    { name = "httpx", specifier = ">=0.27.0" },
     { name = "httpx2", specifier = "==2.13.1" },
     { name = "jinja2", specifier = ">=3.1.0" },
+    { name = "jsonschema", specifier = ">=4.0.0" },
     { name = "mcp", specifier = "==2.3.0" },
     { name = "mcp-types", specifier = "==2.3.0" },
     { name = "openpyxl", specifier = ">=3.1.0" },
+    { name = "opentelemetry-api", specifier = ">=1.20.0" },
+    { name = "opentelemetry-instrumentation-threading", specifier = ">=0.41b0" },
+    { name = "opentelemetry-sdk", specifier = ">=1.20.0" },
     { name = "prefab-ui", specifier = "==0.20.2" },
     { name = "py-key-value-aio", extras = ["filetree", "redis", "wrappers-encryption"], specifier = "==0.4.6" },
+    { name = "pydantic", specifier = ">=2.4.0" },
     { name = "pydantic-monty", specifier = ">=1.0.0" },
     { name = "pypdf", specifier = ">=4.0.0" },
     { name = "pyperclip", specifier = ">=1.8.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "qrcode", specifier = ">=7.4.0" },
     { name = "rank-bm25", specifier = ">=0.2.2" },
-    { name = "strands-agents", specifier = ">=1.50.0" },
+    { name = "typing-extensions", specifier = ">=4.8.0" },
     { name = "utcp", specifier = ">=1.0.0" },
     { name = "utcp-http", specifier = ">=1.0.0" },
+    { name = "watchdog", specifier = ">=3.0.0" },
     { name = "youtube-transcript-api", specifier = ">=0.6.2" },
 ]
 provides-extras = ["dev"]
