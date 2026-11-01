@@ -69,8 +69,8 @@ except ImportError:
     pass
 
 try:
-    from .take_photo import take_photo
-    __all__.append("take_photo")
+    from .take_photo import take_photo, take_video
+    __all__.extend(["take_photo", "take_video"])
 except ImportError:
     pass
 

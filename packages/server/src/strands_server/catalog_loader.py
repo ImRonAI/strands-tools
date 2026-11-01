@@ -77,6 +77,17 @@ def _format_tool_output(raw: Any) -> ToolResult:
     if isinstance(raw, ToolResult):
         return raw
 
+    import base64
+
+    def _sanitize_bytes(val: Any) -> Any:
+        if isinstance(val, (bytes, bytearray)):
+            return base64.b64encode(val).decode("ascii")
+        if isinstance(val, dict):
+            return {str(k): _sanitize_bytes(v) for k, v in val.items()}
+        if isinstance(val, (list, tuple)):
+            return [_sanitize_bytes(v) for v in val]
+        return val
+
     if isinstance(raw, dict):
         # Strands ToolResult dict shape: {"status": "success"|"error", "content": [{"text": ...}, {"json": ...}]}
         blocks = raw.get("content")
@@ -87,9 +98,9 @@ def _format_tool_output(raw: Any) -> ToolResult:
                     if isinstance(b.get("text"), str):
                         texts.append(b["text"])
                     elif "json" in b:
-                        texts.append(json.dumps(b["json"], default=str))
-        text_out = "\n".join(texts) if texts else json.dumps(raw, default=str)
-        structured = dict(raw)
+                        texts.append(json.dumps(_sanitize_bytes(b["json"]), default=str))
+        structured: dict[str, Any] = _sanitize_bytes(dict(raw))
+        text_out = "\n".join(texts) if texts else json.dumps(structured, default=str)
         if "text" not in structured and texts:
             structured["text"] = text_out
         return ToolResult(

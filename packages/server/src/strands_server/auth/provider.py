@@ -40,9 +40,16 @@ CREDENTIAL_SCHEMAS: dict[str, dict[str, Any]] = {
         "auth_tools": ["google_auth", "use_google"],
     },
     "strands_fun_tools": {
-        "title": "Strands Fun Tools (UI, Audio, Vision, Chess, Bluetooth, Clipboard)",
-        "env_vars": ["BYPASS_TOOL_CONSENT", "STOCKFISH_PATH"],
-        "auth_tools": ["utility"],
+        "title": "Strands Fun Tools (UI, Audio, Vision, Face Auth, Chess, Bluetooth, Clipboard)",
+        "env_vars": [
+            "BYPASS_TOOL_CONSENT",
+            "STOCKFISH_PATH",
+            "GEMINI_API_KEY",
+            "GOOGLE_API_KEY",
+            "STRANDS_FACE_JWT_SECRET",
+            "STRANDS_FACE_AUTH_DIR",
+        ],
+        "auth_tools": ["utility", "face_recognition"],
     },
     "strands_tools": {
         "title": "Strands Agent Tools (AWS, Search, Memory, Multi-Agent, Code, Media)",
