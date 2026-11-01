@@ -11,9 +11,22 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
+
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+for _extra_path in (
+    _REPO_ROOT / "src" / "tools",
+    _REPO_ROOT / "src",
+    _REPO_ROOT / "packages" / "server" / "src",
+    _REPO_ROOT / "packages" / "client" / "src",
+):
+    _extra_str = str(_extra_path)
+    if _extra_str not in sys.path:
+        sys.path.insert(0, _extra_str)
 
 from fastmcp import FastMCP
 from fastmcp.apps.generative import GenerativeUI
@@ -77,13 +90,14 @@ def build_proxied_servers() -> list[tuple[str, Any]]:
     else:
         logger.info("TELNYX_API_KEY not set; skipping telnyx proxy mount")
 
-    # 2. REA stdio proxy
+    # 2. REA stdio proxy (mount only when node binary and built REA node_modules exist)
     try:
-        from strands_client.rea_proxy import create_rea_proxy
+        from strands_client.rea_proxy import DEFAULT_REA_DIR, create_rea_proxy
 
-        rea_p = create_rea_proxy()
-        if rea_p:
-            proxies.append(("rea", rea_p))
+        if shutil.which("node") and (DEFAULT_REA_DIR / "node_modules").exists():
+            rea_p = create_rea_proxy()
+            if rea_p:
+                proxies.append(("rea", rea_p))
     except Exception as e:
         logger.warning("REA proxy not available: %s", e)
 
@@ -110,7 +124,7 @@ def build_proxied_servers() -> list[tuple[str, Any]]:
                     cfg = MCPConfig(
                         mcpServers={
                             sdir_name: StdioMCPServer(
-                                command="python",
+                                command=sys.executable,
                                 args=[str(py_entry.resolve())],
                             )
                         }

@@ -9,8 +9,16 @@ from pathlib import Path
 from typing import Any
 
 _SERVER_SRC = Path(__file__).resolve().parent.parent
-if str(_SERVER_SRC) not in sys.path:
-    sys.path.insert(0, str(_SERVER_SRC))
+_REPO_ROOT = _SERVER_SRC.parents[2]
+for _extra_path in (
+    _REPO_ROOT / "src" / "tools",
+    _REPO_ROOT / "src",
+    _SERVER_SRC,
+    _REPO_ROOT / "packages" / "client" / "src",
+):
+    _extra_str = str(_extra_path)
+    if _extra_str not in sys.path:
+        sys.path.insert(0, _extra_str)
 
 import fastmcp
 from fastmcp import FastMCP
