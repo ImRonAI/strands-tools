@@ -800,7 +800,15 @@ def yolo_vision(
 
     try:
         save_path = Path(save_dir).expanduser().resolve()
-        save_path.mkdir(parents=True, exist_ok=True)
+        try:
+            save_path.mkdir(parents=True, exist_ok=True)
+            if not os.access(save_path, os.W_OK):
+                raise PermissionError("Directory not writable")
+        except OSError:
+            import tempfile
+
+            save_path = (Path(tempfile.gettempdir()) / "yolo_detections").resolve()
+            save_path.mkdir(parents=True, exist_ok=True)
 
         if action == "detect":
             rgb_img, jpeg_bytes, source_desc = _load_image(

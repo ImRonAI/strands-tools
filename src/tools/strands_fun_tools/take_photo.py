@@ -620,7 +620,15 @@ def take_photo(
             return {**info, "content": [{"text": text}, {"json": info}]}
 
         save_dir = Path(save_path).expanduser() if save_path else Path.cwd()
-        save_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            save_dir.mkdir(parents=True, exist_ok=True)
+            if not os.access(save_dir, os.W_OK):
+                raise PermissionError("Directory not writable")
+        except OSError:
+            import tempfile
+
+            save_dir = Path(tempfile.gettempdir()) / "strands_media"
+            save_dir.mkdir(parents=True, exist_ok=True)
 
         if media_data is not None and media_data.strip():
             return _ingest_media_data(media_data, mode, source, save_dir)

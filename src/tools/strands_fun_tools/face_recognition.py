@@ -181,7 +181,15 @@ def _resolve_save_dir(save_dir: str | None = None) -> Path:
         or os.path.join(os.path.expanduser("~"), ".strands", "face_auth")
     )
     path = Path(raw).expanduser().resolve()
-    path.mkdir(parents=True, exist_ok=True)
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        if not os.access(path, os.W_OK):
+            raise PermissionError("Directory not writable")
+    except OSError:
+        import tempfile
+
+        path = (Path(tempfile.gettempdir()) / "strands_face_auth").resolve()
+        path.mkdir(parents=True, exist_ok=True)
     return path
 
 
