@@ -92,19 +92,24 @@ def discover_skills(skills_dir: str | Path) -> List[SkillProperties]:
     if disk_cache.exists():
         try:
             raw_items = json.loads(disk_cache.read_text(encoding="utf-8"))
-            cached_skills = [
-                SkillProperties(
-                    name=str(item["name"]),
-                    description=str(item["description"]),
-                    path=str(item["path"]),
-                    skill_dir=str(item.get("skill_dir") or Path(item["path"]).parent),
-                    license=item.get("license"),
-                    compatibility=item.get("compatibility"),
-                    allowed_tools=item.get("allowed_tools"),
-                    metadata=item.get("metadata") or {},
+            cached_skills: List[SkillProperties] = []
+            for item in raw_items:
+                raw_path = Path(str(item["path"]))
+                raw_skill_dir = Path(str(item.get("skill_dir") or raw_path.parent))
+                resolved_skill_dir = (skills_dir / raw_skill_dir.name).resolve()
+                resolved_md_path = (resolved_skill_dir / raw_path.name).resolve()
+                cached_skills.append(
+                    SkillProperties(
+                        name=str(item["name"]),
+                        description=str(item["description"]),
+                        path=str(resolved_md_path if resolved_md_path.exists() else raw_path),
+                        skill_dir=str(resolved_skill_dir if resolved_skill_dir.exists() else raw_skill_dir),
+                        license=item.get("license"),
+                        compatibility=item.get("compatibility"),
+                        allowed_tools=item.get("allowed_tools"),
+                        metadata=item.get("metadata") or {},
+                    )
                 )
-                for item in raw_items
-            ]
             _DISCOVERY_MEM_CACHE[cache_key] = cached_skills
             return list(cached_skills)
         except Exception:

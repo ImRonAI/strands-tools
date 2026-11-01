@@ -7,7 +7,10 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
-import strictyaml  # type: ignore[import-untyped]
+try:
+    import strictyaml  # type: ignore[import-untyped]
+except ImportError:
+    strictyaml = None  # type: ignore[assignment]
 import yaml  # type: ignore[import-untyped]
 
 from .errors import ParseError, ValidationError
@@ -57,10 +60,16 @@ def _parse_skill_md(content: str) -> tuple[dict[str, Any], str]:
     frontmatter_str = match.group(1)
     body = match.group(2).strip()
 
-    try:
-        parsed = strictyaml.load(frontmatter_str)
-        frontmatter = parsed.data
-    except strictyaml.YAMLError:
+    if strictyaml is not None:
+        try:
+            parsed = strictyaml.load(frontmatter_str)
+            frontmatter = parsed.data
+        except Exception:
+            try:
+                frontmatter = yaml.safe_load(frontmatter_str)
+            except Exception as e:
+                raise ParseError(f"Invalid YAML in frontmatter: {e}") from e
+    else:
         try:
             frontmatter = yaml.safe_load(frontmatter_str)
         except Exception as e:
