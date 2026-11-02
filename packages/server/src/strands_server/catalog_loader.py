@@ -147,9 +147,12 @@ class StrandsFastMCPTool(Tool):
                     "name": self.name,
                     "input": args,
                 }
-                res = target(tool_use)
-                if asyncio.iscoroutine(res):
-                    res = await res
+                if inspect.iscoroutinefunction(target):
+                    res = await target(tool_use)
+                else:
+                    res = await asyncio.to_thread(target, tool_use)
+                    if asyncio.iscoroutine(res):
+                        res = await res
                 return _format_tool_output(res)
 
             if self.invocation_mode == "agent_tool" and hasattr(target, "stream") and not callable(target):
@@ -167,7 +170,11 @@ class StrandsFastMCPTool(Tool):
                 return _format_tool_output(final_res or {"status": "success", "content": []})
 
             if callable(target):
-                res = target(**args)
+                inner_fn = getattr(target, "_tool_func", target)
+                if inspect.iscoroutinefunction(inner_fn) or inspect.isasyncgenfunction(inner_fn):
+                    res = target(**args)
+                else:
+                    res = await asyncio.to_thread(target, **args)
                 if inspect.isasyncgen(res):
                     items = []
                     async for item in res:

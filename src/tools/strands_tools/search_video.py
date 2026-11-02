@@ -42,9 +42,14 @@ from strands.types.tools import ToolResult, ToolUse
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL_CHAIN: tuple[str, ...] = (
-    "gemini-3.8-flash",
     "gemini-4-argon",
+    "gemini-3.8-flash",
     "gemini-3.5-flash-lite",
+)
+WEB_SEARCH_MODEL_CHAIN: tuple[str, ...] = (
+    "gemini-3.5-flash-lite",
+    "gemini-4-argon",
+    "gemini-3.8-flash",
 )
 
 INLINE_VIDEO_MAX_BYTES: int = 20 * 1024 * 1024  # 20 MB inline limit per Gemini docs
@@ -339,9 +344,9 @@ def _get_gemini_client() -> genai.Client:
     return genai.Client(
         api_key=api_key,
         http_options={
-            "timeout": 60_000,
+            "timeout": 25_000,
             "retry_options": {
-                "attempts": 1,
+                "attempts": 0,
             },
         },
     )
@@ -490,6 +495,7 @@ def _prepare_gemini_video_parts(
                     "type": "video",
                     "uri": yt_canonical,
                     "processing": requested_processing,
+                    "resolution": "low",
                 }
             )
             video_labels.append(yt_canonical)
@@ -643,7 +649,7 @@ def _run_interaction_with_failover(
                     "schema": schema,
                 },
                 "store": False,
-                "timeout": 55.0,
+                "timeout": 20.0,
             }
             if tools:
                 request_kwargs["tools"] = tools
@@ -1148,9 +1154,12 @@ def search_video(tool: ToolUse, **kwargs: Any) -> ToolResult:
             "in the requested JSON schema."
         )
 
+        web_model_chain: tuple[str, ...] = (
+            model_chain if model_override else WEB_SEARCH_MODEL_CHAIN
+        )
         search_output, used_model = _run_interaction_with_failover(
             client,
-            model_chain=model_chain,
+            model_chain=web_model_chain,
             input_payload=web_prompt,
             system_instruction=system_instruction,
             tools=[{"type": "google_search"}],

@@ -54,8 +54,8 @@ _INLINE_VIDEO_MAX_BYTES: int = 20 * 1024 * 1024
 
 # Default Gemini Interactions model failover chain for video understanding
 _DEFAULT_GEMINI_VIDEO_MODELS: tuple[str, ...] = (
-    "gemini-3.8-flash",
     "gemini-4-argon",
+    "gemini-3.8-flash",
     "gemini-3.5-flash-lite",
 )
 
@@ -100,6 +100,8 @@ _CAPACITY_KEYWORDS: tuple[str, ...] = (
     "capacity",
     "bandwidth",
     "server_overloaded",
+    "timed out",
+    "timeout",
 )
 
 TOOL_SPEC: ToolSpec = {
@@ -390,7 +392,15 @@ def _get_gemini_client() -> genai.Client:
             "Neither GEMINI_API_KEY nor GOOGLE_API_KEY environment variable is set. "
             "Please set GEMINI_API_KEY to use Gemini video understanding."
         )
-    return genai.Client(api_key=api_key)
+    return genai.Client(
+        api_key=api_key,
+        http_options={
+            "timeout": 30_000,
+            "retry_options": {
+                "attempts": 0,
+            },
+        },
+    )
 
 
 def _upload_and_wait_gemini_file(
@@ -869,7 +879,10 @@ def chat_video(tool: ToolUse, **kwargs: Any) -> ToolResult:
         # Official Gemini video-understanding best practice: place the video part BEFORE the text prompt
         input_parts: list[dict[str, Any]] = [video_part, text_part] if video_part is not None else [text_part]
 
-        generation_config: dict[str, Any] = {"temperature": temperature}
+        generation_config: dict[str, Any] = {
+            "temperature": temperature,
+            "thinking_level": "low",
+        }
         if max_output_tokens is not None:
             generation_config["max_output_tokens"] = max_output_tokens
 
@@ -891,6 +904,7 @@ def chat_video(tool: ToolUse, **kwargs: Any) -> ToolResult:
                 "input": input_parts,
                 "generation_config": generation_config,
                 "store": True,
+                "timeout": 25.0,
             }
             if previous_interaction_id:
                 req_kwargs["previous_interaction_id"] = previous_interaction_id
