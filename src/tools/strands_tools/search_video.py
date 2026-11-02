@@ -651,67 +651,87 @@ def _prepare_gemini_video_parts(
     return video_parts, video_labels, transcript_sections
 
 
+def _extract_interaction_text(interaction: object) -> str:
+    """Extract the JSON text response from a Gemini `Interaction` object."""
+    output_text = getattr(interaction, "output_text", None)
+    if isinstance(output_text, str) and output_text.strip():
+        return output_text.strip()
+
+    steps = getattr(interaction, "steps", None)
+    if isinstance(steps, list):
+        chunks: list[str] = []
+        for step in cast(list[Any], steps):
+            if getattr(step, "type", None) == "model_output":
+                content = getattr(step, "content", None)
+                if isinstance(content, list):
+                    for part in cast(list[Any], content):
+                        if getattr(part, "type", None) == "text":
+                            txt = getattr(part, "text", None)
+                            if isinstance(txt, str) and txt:
+                                chunks.append(txt)
+        if chunks:
+            return "".join(chunks).strip()
+    return '{"clips": [], "overall_summary": ""}'
+
+
 def _run_interaction_with_failover(
     client: genai.Client,
     *,
     model_chain: Sequence[str],
-    input_payload: Any,
-    system_instruction: str,
-    tools: list[dict[str, Any]] | None = None,
+    content_parts: list[dict[str, Any]],
 ) -> tuple[VideoSearchOutput, str]:
     """Call `client.interactions.create` across `model_chain` with structured output `VideoSearchOutput`."""
     last_error: Exception | None = None
+    wrapped_input: list[dict[str, Any]] = [
+        {
+            "type": "user_input",
+            "content": content_parts,
+        }
+    ]
 
     for candidate_model in model_chain:
-        tool_variants: list[list[dict[str, Any]] | None] = [tools, None] if tools else [None]
-        for active_tools in tool_variants:
-            try:
-                request_kwargs: dict[str, Any] = {
-                    "model": candidate_model,
-                    "input": input_payload,
-                    "system_instruction": system_instruction,
-                    "generation_config": {
-                        "temperature": 0.1,
-                        "thinking_level": "low",
-                    },
-                    "response_format": {
-                        "type": "text",
-                        "mime_type": "application/json",
-                        "schema": _VIDEO_SEARCH_RESPONSE_SCHEMA,
-                    },
-                    "store": False,
-                    "timeout": 10.0 if active_tools else 22.0,
-                }
-                if active_tools:
-                    request_kwargs["tools"] = active_tools
-
-                interaction = client.interactions.create(**request_kwargs)
-                output_text = str(getattr(interaction, "output_text", "") or "").strip()
-                if not output_text:
-                    # Reconstruct from model_output steps if output_text was not populated
-                    chunks: list[str] = []
-                    raw_steps = cast(Sequence[object], getattr(interaction, "steps", None) or ())
-                    for step in raw_steps:
-                        if getattr(step, "type", None) == "model_output":
-                            raw_items = cast(Sequence[object], getattr(step, "content", None) or ())
-                            for item in raw_items:
-                                if getattr(item, "type", None) == "text":
-                                    txt = getattr(item, "text", None)
-                                    if isinstance(txt, str):
-                                        chunks.append(txt)
-                    output_text = "".join(chunks).strip()
-
-                parsed = VideoSearchOutput.model_validate_json(output_text)
-                return parsed, candidate_model
-            except Exception as exc:
-                last_error = exc
-                logger.warning(
-                    "model=<%s>, tools=<%s>, error=<%s> | Gemini Interactions video search attempt failed",
-                    candidate_model,
-                    bool(active_tools),
-                    exc,
-                )
-                continue
+        try:
+            interaction = client.interactions.create(
+                model=candidate_model,
+                input=cast(Any, wrapped_input),
+                generation_config={"thinking_level": "low"},
+                response_format={
+                    "type": "text",
+                    "mime_type": "application/json",
+                    "schema": _VIDEO_SEARCH_RESPONSE_SCHEMA,
+                },
+                store=False,
+                timeout=15.0,
+            )
+            output_text = _extract_interaction_text(interaction)
+            parsed = VideoSearchOutput.model_validate_json(output_text)
+            return parsed, candidate_model
+        except Exception as exc:
+            last_error = exc
+            if "thinking_level" in str(exc).lower() or "thinking level" in str(exc).lower():
+                try:
+                    interaction = client.interactions.create(
+                        model=candidate_model,
+                        input=cast(Any, wrapped_input),
+                        response_format={
+                            "type": "text",
+                            "mime_type": "application/json",
+                            "schema": _VIDEO_SEARCH_RESPONSE_SCHEMA,
+                        },
+                        store=False,
+                        timeout=15.0,
+                    )
+                    output_text = _extract_interaction_text(interaction)
+                    parsed = VideoSearchOutput.model_validate_json(output_text)
+                    return parsed, candidate_model
+                except Exception as retry_exc:
+                    last_error = retry_exc
+            logger.warning(
+                "model=<%s>, error=<%s> | Gemini Interactions video search attempt failed",
+                candidate_model,
+                last_error,
+            )
+            continue
 
     raise RuntimeError(f"All Gemini models failed for video search: {last_error}") from last_error
 
@@ -1070,18 +1090,11 @@ def search_video(tool: ToolUse, **kwargs: Any) -> ToolResult:
                 *video_parts,
                 {"type": "text", "text": "\n".join(prompt_lines)},
             ]
-            system_instruction = (
-                "You are a precision multimodal video search engine. Inspect the video timeline across the requested "
-                f"modalities ({modality_desc}), identify every segment that matches the user's query, and return "
-                "accurate start/end timestamps in seconds, calibrated relevance scores (0.0-1.0), concise visual/audio "
-                "summaries, and verbatim transcript excerpts."
-            )
 
             search_output, used_model = _run_interaction_with_failover(
                 client,
                 model_chain=model_chain,
-                input_payload=input_blocks,
-                system_instruction=system_instruction,
+                content_parts=input_blocks,
             )
             clips = _normalize_and_filter_clips(
                 search_output.clips,
@@ -1125,7 +1138,7 @@ def search_video(tool: ToolUse, **kwargs: Any) -> ToolResult:
                 ],
             }
 
-        # Mode 2: External Web / YouTube Video Context Search via Gemini Interactions API + Google Search
+        # Mode 2: External Web / YouTube Video Context Search via Gemini Interactions API
         web_prompt = (
             f'Find relevant YouTube and web videos and specific timestamped segments matching: "{query}".\n'
             f"Focus on {modality_desc} content. Return up to {page_limit} results. "
@@ -1135,18 +1148,11 @@ def search_video(tool: ToolUse, **kwargs: Any) -> ToolResult:
             "('high', 'medium', 'low'), a detailed `summary` of what is shown and discussed, and any known "
             "`transcript_excerpt` or key quote."
         )
-        system_instruction = (
-            "You are a video search engine grounded with Google Search. Discover real, verifiable YouTube and web "
-            "videos matching the user's query, extract key timestamped segments and spoken quotes, and return them "
-            "in the requested JSON schema."
-        )
 
         search_output, used_model = _run_interaction_with_failover(
             client,
             model_chain=model_chain,
-            input_payload=[{"type": "text", "text": web_prompt}],
-            system_instruction=system_instruction,
-            tools=[{"type": "google_search"}],
+            content_parts=[{"type": "text", "text": web_prompt}],
         )
         clips = _normalize_and_filter_clips(
             search_output.clips,
