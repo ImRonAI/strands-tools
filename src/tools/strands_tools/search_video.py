@@ -310,28 +310,6 @@ def _normalize_youtube_url(url: str) -> str | None:
     return None
 
 
-def _fetch_youtube_transcript_text(video_id: str, max_snippets: int = 250) -> str:
-    """Fetch timestamped captions for a YouTube video ID via `youtube_transcript_api` if available."""
-    try:
-        from youtube_transcript_api import YouTubeTranscriptApi
-
-        transcript = YouTubeTranscriptApi().fetch(video_id)
-        lines: list[str] = []
-        for idx, snippet in enumerate(transcript):
-            if idx >= max_snippets:
-                break
-            start_s = float(getattr(snippet, "start", 0.0))
-            duration_s = float(getattr(snippet, "duration", 0.0))
-            end_s = start_s + duration_s
-            text_val = str(getattr(snippet, "text", "")).replace("\n", " ").strip()
-            if text_val:
-                lines.append(f"[{start_s:.1f}s - {end_s:.1f}s] {text_val}")
-        return "\n".join(lines)
-    except Exception as exc:
-        logger.debug("youtube_id=<%s>, error=<%s> | YouTube transcript unavailable", video_id, exc)
-        return ""
-
-
 def _get_gemini_client() -> genai.Client:
     """Create a configured `google.genai.Client` with fast retry failover and per-request timeout."""
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
@@ -489,7 +467,6 @@ def _prepare_gemini_video_parts(
 
         yt_canonical = _normalize_youtube_url(url_clean)
         if yt_canonical is not None:
-            yt_id = _extract_youtube_video_id(yt_canonical)
             video_parts.append(
                 {
                     "type": "video",
@@ -499,12 +476,6 @@ def _prepare_gemini_video_parts(
                 }
             )
             video_labels.append(yt_canonical)
-            if yt_id:
-                transcript_text = _fetch_youtube_transcript_text(yt_id)
-                if transcript_text:
-                    transcript_sections.append(
-                        f"Reference caption timestamps for {yt_canonical} (YouTube ID {yt_id}):\n{transcript_text}"
-                    )
             continue
 
         if url_clean.startswith("files/"):
@@ -717,50 +688,6 @@ def _normalize_and_filter_clips(
 
     filtered.sort(key=lambda c: c.score, reverse=True)
     return filtered[:page_limit]
-
-
-def _enrich_clips_with_youtube_transcripts(clips: list[VideoClipMatch]) -> list[VideoClipMatch]:
-    """Enrich matched clips pointing to YouTube videos with caption excerpts when `transcript_excerpt` is empty."""
-    transcript_cache: dict[str, list[tuple[float, float, str]]] = {}
-    enriched: list[VideoClipMatch] = []
-
-    for clip in clips:
-        yt_id = _extract_youtube_video_id(clip.video_id)
-        if not yt_id:
-            enriched.append(clip)
-            continue
-
-        if yt_id not in transcript_cache:
-            snippets: list[tuple[float, float, str]] = []
-            try:
-                from youtube_transcript_api import YouTubeTranscriptApi
-
-                fetched = YouTubeTranscriptApi().fetch(yt_id)
-                for item in fetched:
-                    s_start = float(getattr(item, "start", 0.0))
-                    s_dur = float(getattr(item, "duration", 0.0))
-                    s_text = str(getattr(item, "text", "")).replace("\n", " ").strip()
-                    if s_text:
-                        snippets.append((s_start, s_start + s_dur, s_text))
-            except Exception:
-                snippets = []
-            transcript_cache[yt_id] = snippets
-
-        segs = transcript_cache.get(yt_id, [])
-        if segs and not clip.transcript_excerpt:
-            window_start = clip.start
-            window_end = clip.end if clip.end > clip.start else clip.start + 30.0
-            matching_texts = [
-                txt for (s0, s1, txt) in segs if s1 >= window_start and s0 <= window_end
-            ]
-            if not matching_texts:
-                matching_texts = [txt for (_, _, txt) in segs[:5]]
-            excerpt = " ".join(matching_texts)[:400].strip()
-            enriched.append(clip.model_copy(update={"transcript_excerpt": excerpt}))
-        else:
-            enriched.append(clip)
-
-    return enriched
 
 
 def _format_gemini_search_results(
@@ -1100,7 +1027,6 @@ def search_video(tool: ToolUse, **kwargs: Any) -> ToolResult:
                 threshold=threshold,
                 page_limit=page_limit,
             )
-            clips = _enrich_clips_with_youtube_transcripts(clips)
 
             formatted_text = _format_gemini_search_results(
                 clips,
@@ -1169,7 +1095,6 @@ def search_video(tool: ToolUse, **kwargs: Any) -> ToolResult:
             threshold=threshold,
             page_limit=page_limit,
         )
-        clips = _enrich_clips_with_youtube_transcripts(clips)
 
         formatted_text = _format_gemini_search_results(
             clips,
