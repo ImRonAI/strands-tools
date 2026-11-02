@@ -392,7 +392,7 @@ def _get_gemini_client() -> genai.Client:
             "Neither GEMINI_API_KEY nor GOOGLE_API_KEY environment variable is set. "
             "Please set GEMINI_API_KEY to use Gemini video understanding."
         )
-    return genai.Client(
+    client = genai.Client(
         api_key=api_key,
         http_options={
             "timeout": 30_000,
@@ -401,6 +401,12 @@ def _get_gemini_client() -> genai.Client:
             },
         },
     )
+    sdk_cfg: Any = getattr(client.interactions, "sdk_configuration", None)
+    retry_cfg: Any = getattr(sdk_cfg, "retry_config", None) if sdk_cfg is not None else None
+    if retry_cfg is not None:
+        retry_cfg.max_retries = 0
+        retry_cfg.retry_connection_errors = False
+    return client
 
 
 def _upload_and_wait_gemini_file(
