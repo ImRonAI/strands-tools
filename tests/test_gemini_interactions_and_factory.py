@@ -757,3 +757,150 @@ def test_agentskills_get_gemini_agent_model_returns_router_by_default() -> None:
     assert isinstance(single_skill_model, GeminiInteractionsModel)
     assert single_skill_model.get_config()["model_id"] == "gemini-3.8-flash"
     assert single_skill_model.get_config().get("gemini_tools") == ["google_search"]
+
+
+def test_xai_grok_4_7_responses_model_and_native_tools(monkeypatch: pytest.MonkeyPatch) -> None:
+    from strands.models.openai_responses import OpenAIResponsesModel
+    from strands_harness.models import DEFAULT_XAI_TOOLS, normalize_xai_tools, resolve_default_model_spec_from_env
+
+    for key in (
+        "STRANDS_DEFAULT_MODEL",
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "GROQ_API_KEY",
+        "MISTRAL_API_KEY",
+        "LITELLM_API_KEY",
+        "OLLAMA_API_KEY",
+        "OLLAMA_HOST",
+        "AWS_BEARER_TOKEN_BEDROCK",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_PROFILE",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("XAI_API_KEY", "xai-test-key-47")
+
+    assert resolve_default_model_spec_from_env() == "xai/grok-4.7"
+
+    # Resolve via bare 'grok-4.7' or 'xai/grok-4.7' or None (auto-detected from XAI_API_KEY)
+    for spec in (None, "xai/grok-4.7", "grok-4.7"):
+        resolved = resolve_model(spec, DEFAULT_MODEL)
+        assert isinstance(resolved, OpenAIResponsesModel)
+        cfg = resolved.get_config()
+        assert cfg.get("model_id") == "grok-4.7"
+        assert cfg.get("context_window_limit") == 2_000_000
+        assert resolved.client_args["base_url"] == "https://api.x.ai/v1"
+        assert resolved.client_args["api_key"] == "xai-test-key-47"
+        params = cast(Mapping[str, object], cfg.get("params") or {})
+        assert params.get("reasoning") == {"effort": "high"}
+        assert params.get("tools") == [dict(t) for t in DEFAULT_XAI_TOOLS]
+
+    # Verify custom xai_tools normalization (code_execution -> code_interpreter, collections_search -> file_search, mcp)
+    normalized = normalize_xai_tools(
+        [
+            "web_search",
+            "x_search",
+            "code_execution",
+            "collections_search",
+            {"type": "mcp", "server_label": "xai_mcp", "server_url": "https://mcp.x.ai/sse"},
+        ]
+    )
+    assert normalized == [
+        {"type": "web_search"},
+        {"type": "x_search"},
+        {"type": "code_interpreter"},
+        {"type": "file_search"},
+        {"type": "mcp", "server_label": "xai_mcp", "server_url": "https://mcp.x.ai/sse"},
+    ]
+
+    # Verify create_harness, Agent, build_agent_from_config, and build_graph with xAI Grok 4.7
+    harness_agent = create_harness(
+        instructions="Analyze X sentiment and run Python code.",
+        builtin_tools=[],
+        session=False,
+        memory=False,
+        skills=False,
+    )
+    assert isinstance(harness_agent.model, OpenAIResponsesModel)
+    assert harness_agent.model.get_config().get("model_id") == "grok-4.7"
+
+    direct_agent = Agent(model="grok-4.7", callback_handler=None)
+    assert isinstance(direct_agent.model, OpenAIResponsesModel)
+    assert direct_agent.model.get_config().get("model_id") == "grok-4.7"
+
+    graph_obj = build_graph(
+        {
+            "nodes": [
+                {
+                    "id": "grok_analyst",
+                    "system_prompt": "Use X search and code execution.",
+                    "model_id": "xai/grok-4.7",
+                    "xai_tools": ["web_search", "x_search", "code_execution"],
+                }
+            ],
+            "edges": [],
+        }
+    )
+    grok_exec = graph_obj.nodes["grok_analyst"].executor
+    assert isinstance(grok_exec, Agent)
+    assert isinstance(grok_exec.model, OpenAIResponsesModel)
+    assert grok_exec.model.get_config().get("model_id") == "grok-4.7"
+
+
+def test_groq_responses_model_and_multi_provider_auto_detection(monkeypatch: pytest.MonkeyPatch) -> None:
+    from strands.models.anthropic import AnthropicModel
+    from strands.models.litellm import LiteLLMModel
+    from strands.models.mistral import MistralModel
+    from strands.models.ollama import OllamaModel
+    from strands.models.openai_responses import OpenAIResponsesModel
+    from strands_harness.models import resolve_default_model_spec_from_env
+
+    for key in (
+        "STRANDS_DEFAULT_MODEL",
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "XAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "GROQ_API_KEY",
+        "MISTRAL_API_KEY",
+        "LITELLM_API_KEY",
+        "OLLAMA_API_KEY",
+        "OLLAMA_HOST",
+        "AWS_BEARER_TOKEN_BEDROCK",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_PROFILE",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test_groq_key")
+
+    assert resolve_default_model_spec_from_env() == "groq/llama-3.3-70b-versatile"
+
+    groq_default = resolve_model(None, DEFAULT_MODEL)
+    assert isinstance(groq_default, OpenAIResponsesModel)
+    assert groq_default.get_config().get("model_id") == "llama-3.3-70b-versatile"
+    assert groq_default.get_config().get("context_window_limit") == 131_072
+    assert groq_default.client_args["base_url"] == "https://api.groq.com/openai/v1"
+    assert groq_default.client_args["api_key"] == "gsk_test_groq_key"
+
+    # Multi-segment Groq model IDs like groq/openai/gpt-oss-120b preserve the inner slash
+    groq_oss = resolve_model("groq/openai/gpt-oss-120b", DEFAULT_MODEL, effort="high")
+    assert isinstance(groq_oss, OpenAIResponsesModel)
+    assert groq_oss.get_config().get("model_id") == "openai/gpt-oss-120b"
+    oss_params = cast(Mapping[str, object], groq_oss.get_config().get("params") or {})
+    assert oss_params.get("reasoning") == {"effort": "high"}
+
+    # Verify Anthropic, OpenAI, Mistral, LiteLLM, and Ollama resolution
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-proj-test")
+    monkeypatch.setenv("MISTRAL_API_KEY", "mistral-test")
+    monkeypatch.setenv("LITELLM_API_KEY", "litellm-test")
+    monkeypatch.setenv("OLLAMA_API_KEY", "ollama-test")
+
+    assert isinstance(resolve_model("anthropic/claude-sonnet-4-6", DEFAULT_MODEL), AnthropicModel)
+    assert isinstance(resolve_model("openai/gpt-5.4", DEFAULT_MODEL), OpenAIResponsesModel)
+    assert isinstance(resolve_model("mistral/mistral-large-latest", DEFAULT_MODEL), MistralModel)
+    assert isinstance(resolve_model("litellm/gpt-4o", DEFAULT_MODEL), LiteLLMModel)
+    assert isinstance(resolve_model("ollama/llama3.2", DEFAULT_MODEL), OllamaModel)
+

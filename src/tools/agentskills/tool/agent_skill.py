@@ -660,11 +660,37 @@ def create_skill_agent_tool(
     if additional_tools:
         register_available_tools([t for t in additional_tools if not isinstance(t, str)])
 
-    model: Model | ModelRouter | None
-    try:
-        model = base_agent_model or get_gemini_agent_model()
-    except Exception:
-        model = base_agent_model
+    explicit_base_model: Model | ModelRouter | None = base_agent_model
+
+    def _resolve_active_skill_model(model_override: str | None = None) -> Model | ModelRouter | None:
+        """Resolve the active Model or ModelRouter for a Pattern #3 skill sub-agent."""
+        from strands_harness import defaults as _harness_defaults
+        from strands_harness.models import resolve_model
+
+        if model_override and model_override.strip():
+            raw_spec = model_override.strip()
+            try:
+                from strands_graph_tool.graph import get_model_factories
+
+                factories = get_model_factories()
+                if raw_spec in factories:
+                    built = factories[raw_spec]()
+                    if isinstance(built, (Model, ModelRouter)):
+                        return built
+            except Exception:
+                pass
+            return resolve_model(raw_spec, _harness_defaults.DEFAULT_MODEL)
+
+        if explicit_base_model is not None:
+            return explicit_base_model
+
+        try:
+            return resolve_model(None, _harness_defaults.DEFAULT_MODEL)
+        except Exception:
+            try:
+                return get_gemini_agent_model()
+            except Exception:
+                return None
 
     def get_skill_subdirectories(skill_name: str) -> dict[str, list[str]]:
         """Return the discovered `references/`, `scripts/`, and `assets/` files for a skill."""
@@ -694,6 +720,10 @@ def create_skill_agent_tool(
             list[str] | None,
             "Optional list of Strands tool names from the server catalog to assign to this skill sub-agent for this execution.",
         ] = None,
+        model: Annotated[
+            str | None,
+            "Optional model override (e.g. 'xai/grok-4.7', 'groq/llama-3.3-70b-versatile', 'anthropic/claude-sonnet-4-6', 'openai/gpt-5.4', 'google/gemini-4-argon', 'mistral/mistral-large-latest'). If omitted, automatically resolves from configured API keys.",
+        ] = None,
     ) -> AsyncIterator[Any]:
         """Execute a specialized skill in an isolated sub-agent with real-time streaming (Pattern #3).
 
@@ -707,6 +737,8 @@ def create_skill_agent_tool(
             request: Specific request or task for the skill sub-agent to accomplish
             assigned_tools: Optional list of additional tool names from the Strands tool registry
                 to assign to this skill sub-agent for this execution.
+            model: Optional model override string (e.g. 'xai/grok-4.7', 'groq/llama-3.3-70b-versatile',
+                'anthropic/claude-sonnet-4-6', 'openai/gpt-5.4', 'google/gemini-4-argon').
 
         Yields:
             dict: Intermediate events with keys: skill_name, agent, event, assigned_tools
@@ -733,10 +765,11 @@ def create_skill_agent_tool(
                 tool_resolver=tool_resolver,
             )
 
+            active_model = _resolve_active_skill_model(model)
             sub_agent = _create_skill_agent(
                 skill,
                 instructions,
-                model,
+                active_model,
                 effective_tools,
                 sandbox=sandbox,
             )

@@ -23,7 +23,7 @@ from strands.types.multiagent import MultiAgentInput
 from strands.types.streaming import StreamEvent
 from strands.types.tools import ToolChoice, ToolSpec
 from strands_harness import defaults as harness_defaults
-from strands_harness.models import build_gemini_fallback_router, resolve_model
+from strands_harness.models import resolve_model
 
 from .agent_factory import (
     ConfigDict,
@@ -31,6 +31,7 @@ from .agent_factory import (
     ModelFactory,
     build_agent_from_config,
     coerce_gemini_tools,
+    coerce_xai_tools,
     get_agent_config,
     is_config_mapping,
     is_object_sequence,
@@ -225,10 +226,10 @@ def configure_skills(
             first_path = Path(str(first_path_attr)) if first_path_attr is not None else Path(".")
             skills_dir = first_path.parent if first_path.exists() else Path(".")
             typed_skills = [cast(SkillProperties, s) for s in skill_list]
-            typed_base_model: Model | ModelRouter = (
+            typed_base_model: Model | ModelRouter | None = (
                 base_agent_model
                 if isinstance(base_agent_model, (Model, ModelRouter))
-                else StubModel("stub_skill")
+                else None
             )
             use_skill_tool: object = create_skill_agent_tool(
                 typed_skills,
@@ -272,8 +273,25 @@ _SUPPORTED_PROVIDER_PREFIXES = (
     "google/",
     "gemini/",
     "gemini-",
+    "xai/",
+    "grok-",
+    "groq/",
+    "llama-3.3-",
+    "llama-3.1-",
+    "deepseek-r1-distill-",
+    "qwen-qwq-",
     "anthropic/",
+    "claude-",
     "openai/",
+    "gpt-",
+    "o1",
+    "o3",
+    "o4",
+    "mistral/",
+    "mistral-",
+    "codestral-",
+    "pixtral-",
+    "ministral-",
     "bedrock/",
     "bedrock-mantle/",
     "litellm/",
@@ -297,6 +315,8 @@ def _resolve_model(
 ) -> object:
     raw_gemini_tools = spec.get("gemini_tools") or spec.get("geminiTools")
     gemini_tools = coerce_gemini_tools(raw_gemini_tools)
+    raw_xai_tools = spec.get("xai_tools") or spec.get("xaiTools")
+    xai_tools = coerce_xai_tools(raw_xai_tools)
     factories = get_model_factories()
     model_id = spec.get("model_id")
     if model_id is not None:
@@ -304,7 +324,12 @@ def _resolve_model(
             return factories[model_id]()
         if isinstance(model_id, str) and model_id.startswith(_SUPPORTED_PROVIDER_PREFIXES):
             target = _normalize_provider_spec(model_id)
-            return resolve_model(target, harness_defaults.DEFAULT_MODEL, gemini_tools=gemini_tools)
+            return resolve_model(
+                target,
+                harness_defaults.DEFAULT_MODEL,
+                gemini_tools=gemini_tools,
+                xai_tools=xai_tools,
+            )
         raise ValueError(f"Unknown model_id: {model_id}")
     if "model" in spec and spec["model"] is not None:
         raw_model = spec["model"]
@@ -313,14 +338,24 @@ def _resolve_model(
                 return factories[raw_model]()
             if raw_model.startswith(_SUPPORTED_PROVIDER_PREFIXES):
                 target = _normalize_provider_spec(raw_model)
-                return resolve_model(target, harness_defaults.DEFAULT_MODEL, gemini_tools=gemini_tools)
+                return resolve_model(
+                    target,
+                    harness_defaults.DEFAULT_MODEL,
+                    gemini_tools=gemini_tools,
+                    xai_tools=xai_tools,
+                )
         if not is_config_mapping(raw_model):
             return raw_model
     if parent_agent is not None:
         return parent_agent.model
     if fallback_model is not None:
         return fallback_model
-    return build_gemini_fallback_router(gemini_tools=gemini_tools)
+    return resolve_model(
+        None,
+        harness_defaults.DEFAULT_MODEL,
+        gemini_tools=gemini_tools,
+        xai_tools=xai_tools,
+    )
 
 
 def _extract_config_source(spec: ConfigMapping) -> str | Path | ConfigMapping | None:

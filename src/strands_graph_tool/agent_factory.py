@@ -29,12 +29,13 @@ from strands.models import Model, ModelRouter
 from strands.models.gemini_interactions import GeminiInteractionsModel
 from strands.multiagent.spec import Preset
 from strands_harness import defaults as harness_defaults
-from strands_harness.models import build_gemini_fallback_router, resolve_model
+from strands_harness.models import resolve_model
 from strands_harness.types.agent import Effort
 
 ConfigDict = dict[str, object]
 ConfigMapping = Mapping[str, object]
 GeminiToolSpec = str | Mapping[str, object] | BaseModel
+XaiToolSpec = str | Mapping[str, object]
 ModelFactory = Callable[[], Model | ModelRouter | object]
 
 
@@ -55,6 +56,19 @@ def coerce_gemini_tools(raw: object) -> list[GeminiToolSpec] | None:
     result: list[GeminiToolSpec] = []
     for item in raw:
         if isinstance(item, (str, BaseModel)):
+            result.append(item)
+        elif is_config_mapping(item):
+            result.append(dict(item))
+    return result
+
+
+def coerce_xai_tools(raw: object) -> list[XaiToolSpec] | None:
+    """Coerce a raw xai_tools sequence into a typed `list[XaiToolSpec]`."""
+    if not is_object_sequence(raw):
+        return None
+    result: list[XaiToolSpec] = []
+    for item in raw:
+        if isinstance(item, str):
             result.append(item)
         elif is_config_mapping(item):
             result.append(dict(item))
@@ -307,8 +321,25 @@ _SUPPORTED_PROVIDER_PREFIXES = (
     "google/",
     "gemini/",
     "gemini-",
+    "xai/",
+    "grok-",
+    "groq/",
+    "llama-3.3-",
+    "llama-3.1-",
+    "deepseek-r1-distill-",
+    "qwen-qwq-",
     "anthropic/",
+    "claude-",
     "openai/",
+    "gpt-",
+    "o1",
+    "o3",
+    "o4",
+    "mistral/",
+    "mistral-",
+    "codestral-",
+    "pixtral-",
+    "ministral-",
     "bedrock/",
     "bedrock-mantle/",
     "litellm/",
@@ -322,9 +353,10 @@ def _resolve_gemini_or_configured_model(
     parent_agent: Agent | None,
     model_factories: Mapping[str, ModelFactory] | None,
     gemini_tools: Sequence[GeminiToolSpec] | None,
+    xai_tools: Sequence[XaiToolSpec] | None,
     effort: Effort,
 ) -> object:
-    """Resolve the model for an agent configuration, defaulting to the Gemini failover ModelRouter."""
+    """Resolve the model for an agent configuration, defaulting to the active provider or Gemini failover ModelRouter."""
     model_id_key = cfg_dict.get("model_id")
     if isinstance(model_id_key, str) and model_id_key.strip():
         mid = model_id_key.strip()
@@ -342,6 +374,7 @@ def _resolve_gemini_or_configured_model(
                 harness_defaults.DEFAULT_MODEL,
                 effort=effort,
                 gemini_tools=gemini_tools,
+                xai_tools=xai_tools,
             )
         raise ValueError(f"Unknown model_id: {mid}")
 
@@ -362,17 +395,27 @@ def _resolve_gemini_or_configured_model(
                     harness_defaults.DEFAULT_MODEL,
                     effort=effort,
                     gemini_tools=gemini_tools,
+                    xai_tools=xai_tools,
                 )
-            if "/" in m_str or ":" in m_str:
+            if "/" in m_str or ":" in m_str or m_str.startswith(_SUPPORTED_PROVIDER_PREFIXES):
                 return resolve_model(
                     m_str,
                     harness_defaults.DEFAULT_MODEL,
                     effort=effort,
                     gemini_tools=gemini_tools,
+                    xai_tools=xai_tools,
                 )
             return m_str
         if is_config_mapping(raw_model):
             nested_id = str(raw_model.get("model_id") or raw_model.get("model") or "gemini-4-argon")
+            if nested_id.startswith(("xai/", "grok-")):
+                nested_xai_tools = coerce_xai_tools(raw_model.get("xai_tools") or raw_model.get("tools")) or xai_tools
+                return resolve_model(
+                    nested_id,
+                    harness_defaults.DEFAULT_MODEL,
+                    effort=effort,
+                    xai_tools=nested_xai_tools,
+                )
             clean_id = nested_id.split("/", 1)[1] if "/" in nested_id else nested_id
             nested_tools = coerce_gemini_tools(raw_model.get("gemini_tools")) or (
                 list(gemini_tools) if gemini_tools is not None else None
@@ -392,9 +435,12 @@ def _resolve_gemini_or_configured_model(
     if parent_agent is not None and getattr(parent_agent, "model", None) is not None:
         return parent_agent.model
 
-    return build_gemini_fallback_router(
+    return resolve_model(
+        None,
+        harness_defaults.DEFAULT_MODEL,
         effort=effort,
         gemini_tools=gemini_tools,
+        xai_tools=xai_tools,
     )
 
 
@@ -525,6 +571,8 @@ def build_agent_from_config(
 
     raw_gemini_tools = cfg_dict.get("gemini_tools") or cfg_dict.get("geminiTools")
     gemini_tools = coerce_gemini_tools(raw_gemini_tools)
+    raw_xai_tools = cfg_dict.get("xai_tools") or cfg_dict.get("xaiTools")
+    xai_tools = coerce_xai_tools(raw_xai_tools)
     raw_effort = cfg_dict.get("effort")
     effort_val: Effort = (
         raw_effort
@@ -537,6 +585,7 @@ def build_agent_from_config(
         parent_agent=parent_agent,
         model_factories=effective_factories,
         gemini_tools=gemini_tools,
+        xai_tools=xai_tools,
         effort=effort_val,
     )
 
@@ -578,6 +627,8 @@ def build_agent_from_config(
             harness_kwargs["model"] = explicit_model
         if gemini_tools is not None:
             harness_kwargs["gemini_tools"] = gemini_tools
+        if xai_tools is not None:
+            harness_kwargs["xai_tools"] = xai_tools
         if resolved_tools:
             harness_kwargs["tools"] = resolved_tools
         if not session:

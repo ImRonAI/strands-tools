@@ -112,19 +112,41 @@ def load_model(path: pathlib.Path, config: dict[str, Any]) -> Model:
     return module.instance(**config)
 
 
+def _detect_default_provider() -> str:
+    """Detect the default provider from configured API keys in os.environ."""
+    if os.getenv("STRANDS_PROVIDER"):
+        return str(os.getenv("STRANDS_PROVIDER"))
+    if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
+        return "gemini"
+    if os.getenv("XAI_API_KEY"):
+        return "xai"
+    if os.getenv("ANTHROPIC_API_KEY"):
+        return "anthropic"
+    if os.getenv("OPENAI_API_KEY"):
+        return "openai"
+    if os.getenv("GROQ_API_KEY"):
+        return "groq"
+    if os.getenv("MISTRAL_API_KEY"):
+        return "mistral"
+    if os.getenv("LITELLM_API_KEY"):
+        return "litellm"
+    if os.getenv("OLLAMA_API_KEY") or os.getenv("OLLAMA_HOST"):
+        return "ollama"
+    return "bedrock"
+
+
 def create_model(provider: str = None, config: dict[str, Any] = None) -> Model:
     """Create model based on provider configuration.
 
     Args:
-        provider: Model provider name. If None, uses STRANDS_PROVIDER env var or defaults to 'gemini' when GEMINI_API_KEY/GOOGLE_API_KEY is set, otherwise 'bedrock'.
+        provider: Model provider name. If None, uses STRANDS_PROVIDER env var or auto-detects from configured API keys.
         config: Model configuration dict. If None, uses environment-based config.
 
     Returns:
         Configured model instance.
     """
-    if provider is None:
-        default_provider = "gemini" if (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")) else "bedrock"
-        provider = os.getenv("STRANDS_PROVIDER", default_provider)
+    if provider is None or provider == "env":
+        provider = _detect_default_provider()
 
     if config is None:
         config = get_provider_config(provider)
@@ -145,6 +167,55 @@ def create_model(provider: str = None, config: dict[str, Any] = None) -> Model:
         if gemini_tools:
             kwargs["gemini_tools"] = gemini_tools
         return GeminiInteractionsModel(**kwargs)
+
+    if provider == "xai":
+        from strands.models.openai_responses import OpenAIResponsesModel
+        from strands_harness.models import DEFAULT_XAI_TOOLS, normalize_xai_tools
+
+        model_id = str(config.get("model_id") or os.getenv("XAI_MODEL_ID") or os.getenv("STRANDS_MODEL_ID", "grok-4.7"))
+        raw_client_args = dict(config.get("client_args") or {})
+        raw_client_args.setdefault("base_url", os.getenv("XAI_BASE_URL", "https://api.x.ai/v1"))
+        api_key = config.get("api_key") or raw_client_args.get("api_key") or os.getenv("XAI_API_KEY")
+        if api_key:
+            raw_client_args["api_key"] = api_key
+        params = dict(config.get("params") or {})
+        params.setdefault("reasoning", {"effort": str(config.get("effort") or "high")})
+        raw_xai_tools = config.get("xai_tools") or params.get("tools")
+        params["tools"] = (
+            normalize_xai_tools(raw_xai_tools)
+            if raw_xai_tools is not None
+            else [dict(t) for t in DEFAULT_XAI_TOOLS]
+        )
+        return OpenAIResponsesModel(client_args=raw_client_args, model_id=model_id, params=params)
+
+    if provider == "groq":
+        from strands.models.openai_responses import OpenAIResponsesModel
+
+        model_id = str(
+            config.get("model_id")
+            or os.getenv("GROQ_MODEL_ID")
+            or os.getenv("STRANDS_MODEL_ID", "llama-3.3-70b-versatile")
+        )
+        raw_client_args = dict(config.get("client_args") or {})
+        raw_client_args.setdefault("base_url", os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1"))
+        api_key = config.get("api_key") or raw_client_args.get("api_key") or os.getenv("GROQ_API_KEY")
+        if api_key:
+            raw_client_args["api_key"] = api_key
+        params = dict(config.get("params") or {})
+        if params:
+            return OpenAIResponsesModel(client_args=raw_client_args, model_id=model_id, params=params)
+        return OpenAIResponsesModel(client_args=raw_client_args, model_id=model_id)
+
+    if provider == "mistral":
+        from strands.models.mistral import MistralModel
+
+        model_id = str(
+            config.get("model_id")
+            or os.getenv("MISTRAL_MODEL_ID")
+            or os.getenv("STRANDS_MODEL_ID", "mistral-large-latest")
+        )
+        api_key = config.get("api_key") or (config.get("client_args") or {}).get("api_key") or os.getenv("MISTRAL_API_KEY")
+        return MistralModel(api_key=api_key, model_id=model_id)
 
     if provider == "bedrock":
         from strands.models.bedrock import BedrockModel
@@ -280,6 +351,30 @@ def get_provider_config(provider: str) -> dict[str, Any]:
             "params": {"max_completion_tokens": int(os.getenv("STRANDS_MAX_TOKENS", "10000"))},
         }
 
+    elif provider == "xai":
+        return {
+            "client_args": {
+                "api_key": os.getenv("XAI_API_KEY"),
+                "base_url": os.getenv("XAI_BASE_URL", "https://api.x.ai/v1"),
+            },
+            "model_id": os.getenv("XAI_MODEL_ID", os.getenv("STRANDS_MODEL_ID", "grok-4.7")),
+        }
+
+    elif provider == "groq":
+        return {
+            "client_args": {
+                "api_key": os.getenv("GROQ_API_KEY"),
+                "base_url": os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
+            },
+            "model_id": os.getenv("GROQ_MODEL_ID", os.getenv("STRANDS_MODEL_ID", "llama-3.3-70b-versatile")),
+        }
+
+    elif provider == "mistral":
+        return {
+            "api_key": os.getenv("MISTRAL_API_KEY"),
+            "model_id": os.getenv("MISTRAL_MODEL_ID", os.getenv("STRANDS_MODEL_ID", "mistral-large-latest")),
+        }
+
     elif provider == "writer":
         return {
             "client_args": {
@@ -321,6 +416,9 @@ def get_available_providers() -> list[str]:
     return [
         "gemini",
         "google",
+        "xai",
+        "groq",
+        "mistral",
         "bedrock",
         "anthropic",
         "litellm",

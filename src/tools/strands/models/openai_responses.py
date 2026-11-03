@@ -202,13 +202,24 @@ class OpenAIResponsesModel(Model):
     def _resolve_client_args(self) -> dict[str, Any]:
         """Return the kwargs to pass to ``openai.AsyncOpenAI`` for the current request.
 
-        Delegates to :func:`resolve_bedrock_client_args` when ``bedrock_mantle_config`` is set.
+        Delegates to :func:`resolve_bedrock_client_args` when ``bedrock_mantle_config`` is set,
+        and resolves ``XAI_API_KEY`` or ``GROQ_API_KEY`` from ``os.environ`` when ``base_url``
+        targets xAI or Groq and ``api_key`` was not already supplied in ``client_args``.
         """
         if self._bedrock_mantle_config is not None:
             return resolve_bedrock_client_args(
                 self._bedrock_mantle_config, self.client_args, model_id=str(self.config.get("model_id", ""))
             )
-        return self.client_args
+        resolved = dict(self.client_args)
+        if not resolved.get("api_key"):
+            import os
+
+            base_url = str(resolved.get("base_url") or "")
+            if "api.x.ai" in base_url and os.environ.get("XAI_API_KEY"):
+                resolved["api_key"] = os.environ["XAI_API_KEY"]
+            elif "api.groq.com" in base_url and os.environ.get("GROQ_API_KEY"):
+                resolved["api_key"] = os.environ["GROQ_API_KEY"]
+        return resolved
 
     @property
     @override

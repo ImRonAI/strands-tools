@@ -155,6 +155,25 @@ _CONTEXT_WINDOW_LIMITS: dict[str, int] = {
     "mistral-medium-2505": 131_072,
     "mistral-small-latest": 131_072,
     "mistral-small-3-2-2506": 131_072,
+    # xAI Grok (Responses API)
+    "grok-4.7": 2_000_000,
+    "grok-4.7-fast": 2_000_000,
+    "grok-4.7-mini": 2_000_000,
+    "grok-4": 2_000_000,
+    "grok-4-fast": 2_000_000,
+    "grok-4-mini": 2_000_000,
+    "grok-3": 131_072,
+    "grok-3-mini": 131_072,
+    "grok-3-fast": 131_072,
+    # Groq (OpenAI Responses API)
+    "openai/gpt-oss-120b": 131_072,
+    "openai/gpt-oss-20b": 131_072,
+    "llama-3.3-70b-versatile": 131_072,
+    "llama-3.1-8b-instant": 131_072,
+    "deepseek-r1-distill-llama-70b": 131_072,
+    "qwen-qwq-32b": 131_072,
+    "meta-llama/llama-4-scout-17b-16e-instruct": 131_072,
+    "meta-llama/llama-4-maverick-17b-128e-instruct": 131_072,
 }
 
 

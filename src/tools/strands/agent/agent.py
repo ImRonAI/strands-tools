@@ -380,21 +380,81 @@ class Agent(AgentBase, LocalAgent):
         elif not model:
             import os
 
-            if (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")) and not (
-                os.environ.get("AWS_ACCESS_KEY_ID") or os.environ.get("AWS_BEARER_TOKEN_BEDROCK")
-            ):
-                from strands_harness.models import build_gemini_fallback_router
+            has_provider_key = any(
+                os.environ.get(var)
+                for var in (
+                    "STRANDS_DEFAULT_MODEL",
+                    "GEMINI_API_KEY",
+                    "GOOGLE_API_KEY",
+                    "XAI_API_KEY",
+                    "ANTHROPIC_API_KEY",
+                    "OPENAI_API_KEY",
+                    "GROQ_API_KEY",
+                    "MISTRAL_API_KEY",
+                    "LITELLM_API_KEY",
+                    "OLLAMA_API_KEY",
+                    "OLLAMA_HOST",
+                )
+            )
+            has_aws_key = bool(os.environ.get("AWS_ACCESS_KEY_ID") or os.environ.get("AWS_BEARER_TOKEN_BEDROCK"))
+            if has_provider_key and (not has_aws_key or bool(os.environ.get("STRANDS_DEFAULT_MODEL"))):
+                from strands_harness import defaults as _harness_defaults
+                from strands_harness.models import resolve_model
 
-                router = build_gemini_fallback_router()
-                self._model_router = router
-                self.model = router.default_model
+                resolved_default = resolve_model(None, _harness_defaults.DEFAULT_MODEL)
+                if isinstance(resolved_default, ModelRouter):
+                    self._model_router = resolved_default
+                    self.model = resolved_default.default_model
+                else:
+                    self.model = resolved_default
             else:
                 self.model = BedrockModel()
         elif isinstance(model, str):
-            if model.startswith("gemini"):
+            if model.startswith("gemini") and "/" not in model:
                 from ..models.gemini_interactions import GeminiInteractionsModel
 
                 self.model = GeminiInteractionsModel(model_id=model)
+            elif (
+                ("/" in model and model.split("/", 1)[0] in (
+                    "google",
+                    "gemini",
+                    "xai",
+                    "groq",
+                    "anthropic",
+                    "openai",
+                    "mistral",
+                    "litellm",
+                    "ollama",
+                    "bedrock",
+                    "bedrock-mantle",
+                ))
+                or model.startswith((
+                    "grok-",
+                    "claude-",
+                    "gpt-",
+                    "o1-",
+                    "o3-",
+                    "o4-",
+                    "mistral-",
+                    "codestral-",
+                    "pixtral-",
+                    "ministral-",
+                    "llama-3.3-",
+                    "llama-3.1-",
+                    "deepseek-r1-distill-",
+                    "qwen-qwq-",
+                ))
+                or model in ("o1", "o3", "o4")
+            ):
+                from strands_harness import defaults as _harness_defaults
+                from strands_harness.models import resolve_model
+
+                resolved_str = resolve_model(model, _harness_defaults.DEFAULT_MODEL)
+                if isinstance(resolved_str, ModelRouter):
+                    self._model_router = resolved_str
+                    self.model = resolved_str.default_model
+                else:
+                    self.model = resolved_str
             else:
                 self.model = BedrockModel(model_id=model)
         else:

@@ -406,6 +406,7 @@ def create_harness(
         _check_caching(caching)
     caching_on = bool(defaults.DEFAULT_CACHING) if not caching_explicit else bool(caching)
     gemini_tools = agent_kwargs.pop("gemini_tools", None)
+    xai_tools = agent_kwargs.pop("xai_tools", None)
     resolved_model = resolve_model(
         model,
         defaults.DEFAULT_MODEL,
@@ -414,6 +415,8 @@ def create_harness(
         caching=caching_on,
         caching_explicit=caching_explicit,
         gemini_tools=gemini_tools,
+        xai_tools=xai_tools,
+        xai_native_tools=(web_search == "native" or xai_tools is not None),
     )
     if isinstance(resolved_model, ModelRouter) and "retry_strategy" not in agent_kwargs:
         agent_kwargs["retry_strategy"] = None

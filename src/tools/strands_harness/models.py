@@ -71,6 +71,9 @@ _WEB_FETCH_MODELS = {
     "anthropic": "claude-haiku-4-5-20251001",
     "openai": "gpt-5.6-luna",
     "google": "gemini-3.5-flash-lite",
+    "mistral": "mistral-small-latest",
+    "xai": "grok-4.7-fast",
+    "groq": "llama-3.1-8b-instant",
 }
 
 # Providers whose endpoint can be repointed by an env var. A non-default endpoint publishes its
@@ -78,6 +81,8 @@ _WEB_FETCH_MODELS = {
 _CUSTOM_ENDPOINT_VARS = {
     "anthropic": "ANTHROPIC_BASE_URL",
     "openai": "OPENAI_BASE_URL",
+    "xai": "XAI_BASE_URL",
+    "groq": "GROQ_BASE_URL",
 }
 
 _BEDROCK_REGION_PREFIXES = ("global.", "apac.", "us.", "eu.", "au.", "jp.")
@@ -95,6 +100,8 @@ _BEDROCK_WEB_FETCH_FAMILY_MODELS = {
 # provider's set so an unsupported level fails here rather than as a request error.
 _ANTHROPIC_LEVELS = ("low", "medium", "high", "xhigh", "max")
 _OPENAI_LEVELS = ("minimal", "low", "medium", "high", "xhigh", "none")
+_XAI_LEVELS = ("low", "medium", "high", "xhigh")
+_GROQ_LEVELS = ("none", "low", "medium", "high")
 _BEDROCK_GPT_LEVELS = ("none", "low", "medium", "high", "xhigh", "max")
 _BEDROCK_GPT_OSS_LEVELS = ("low", "medium", "high")
 _BEDROCK_QWEN_LEVELS = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
@@ -102,6 +109,73 @@ _BEDROCK_XAI_LEVELS = ("low", "medium", "high", "xhigh")
 _BEDROCK_NOVA_LEVELS = ("low", "medium", "high")
 _GOOGLE_LEVELS = ("minimal", "low", "medium", "high")
 _GOOGLE_NO_MINIMAL_MODELS = frozenset({"gemini-4-argon", "gemini-3.8-flash", "gemini-3-pro-preview", "gemini-3.1-pro-preview"})
+
+# Native server-side tools on xAI's Responses API (https://api.x.ai/v1/responses) for Grok 4.7:
+# - web_search: real-time internet browsing and citation extraction
+# - x_search: real-time X (Twitter) posts, users, threads, and discussions
+# - code_interpreter (also aliased as code_execution): sandboxed server-side Python execution
+# - file_search (also aliased as collections_search): xAI Collections / vector store search
+# - mcp: remote MCP server tool integration
+DEFAULT_XAI_TOOLS: tuple[dict[str, str], ...] = (
+    {"type": "web_search"},
+    {"type": "x_search"},
+    {"type": "code_interpreter"},
+)
+NATIVE_XAI_TOOL_TYPES: frozenset[str] = frozenset(
+    {
+        "web_search",
+        "x_search",
+        "code_interpreter",
+        "code_execution",
+        "file_search",
+        "collections_search",
+        "mcp",
+    }
+)
+
+
+def normalize_xai_tools(
+    xai_tools: Sequence[str | Mapping[str, Any]] | None = None,
+    *,
+    web_search: bool = False,
+    include_defaults: bool = True,
+) -> list[dict[str, Any]]:
+    """Normalize xAI Responses API server-side tool specifications for Grok 4.7."""
+    if xai_tools is not None:
+        normalized: list[dict[str, Any]] = []
+        seen_types: set[str] = set()
+        for item in xai_tools:
+            if isinstance(item, str):
+                raw_type = item.strip()
+                if not raw_type:
+                    continue
+                tool_type = (
+                    "code_interpreter"
+                    if raw_type == "code_execution"
+                    else ("file_search" if raw_type == "collections_search" else raw_type)
+                )
+                if tool_type not in seen_types:
+                    seen_types.add(tool_type)
+                    normalized.append({"type": tool_type})
+            elif isinstance(item, Mapping):
+                entry = dict(item)
+                raw_type = str(entry.get("type", "")).strip()
+                if raw_type == "code_execution":
+                    entry["type"] = "code_interpreter"
+                    raw_type = "code_interpreter"
+                elif raw_type == "collections_search":
+                    entry["type"] = "file_search"
+                    raw_type = "file_search"
+                if raw_type and raw_type not in seen_types:
+                    seen_types.add(raw_type)
+                normalized.append(entry)
+        if web_search and "web_search" not in seen_types:
+            normalized.insert(0, {"type": "web_search"})
+        return normalized
+
+    if include_defaults or web_search:
+        return [dict(t) for t in DEFAULT_XAI_TOOLS]
+    return []
 
 
 def _google_levels(model_id: str) -> tuple[str, ...]:
@@ -422,6 +496,72 @@ def _litellm(model_id: str, effort: str | None, web_search: bool, caching: bool)
     return LiteLLMModel(client_args=client_args, model_id=model_id)
 
 
+def _mistral(model_id: str, effort: str | None, web_search: bool, caching: bool) -> Model:
+    from strands.models import CacheConfig
+    from strands.models.mistral import MistralModel
+
+    api_key = os.environ.get("MISTRAL_API_KEY")
+    extra: dict[str, Any] = {}
+    if caching:
+        extra["cache_config"] = CacheConfig(strategy="auto")
+    return MistralModel(api_key=api_key, model_id=model_id, **extra)
+
+
+def _xai(
+    model_id: str,
+    effort: str | None,
+    web_search: bool,
+    caching: bool,
+    *,
+    xai_tools: Sequence[str | Mapping[str, Any]] | None = None,
+    include_default_tools: bool = True,
+) -> Model:
+    # ``caching`` is unused: xAI Responses API caches server-side automatically.
+    from strands.models.openai_responses import OpenAIResponsesModel
+
+    api_key = os.environ.get("XAI_API_KEY")
+    base_url = os.environ.get("XAI_BASE_URL", "https://api.x.ai/v1")
+    client_args: dict[str, Any] = {"base_url": base_url}
+    if api_key:
+        client_args["api_key"] = api_key
+
+    params: dict[str, Any] = {}
+    if effort is not None:
+        params["reasoning"] = {"effort": effort}
+
+    tools_list = normalize_xai_tools(
+        xai_tools,
+        web_search=web_search,
+        include_defaults=include_default_tools,
+    )
+    if tools_list:
+        params["tools"] = tools_list
+
+    if params:
+        return OpenAIResponsesModel(client_args=client_args, model_id=model_id, params=params)
+    return OpenAIResponsesModel(client_args=client_args, model_id=model_id)
+
+
+def _groq(model_id: str, effort: str | None, web_search: bool, caching: bool) -> Model:
+    # ``caching`` is unused: Groq OpenAI Responses API endpoint caches server-side automatically.
+    from strands.models.openai_responses import OpenAIResponsesModel
+
+    api_key = os.environ.get("GROQ_API_KEY")
+    base_url = os.environ.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+    client_args: dict[str, Any] = {"base_url": base_url}
+    if api_key:
+        client_args["api_key"] = api_key
+
+    params: dict[str, Any] = {}
+    if effort is not None:
+        params["reasoning"] = {"effort": effort}
+    if web_search:
+        params["tools"] = [{"type": "web_search"}]
+    if params:
+        return OpenAIResponsesModel(client_args=client_args, model_id=model_id, params=params)
+    return OpenAIResponsesModel(client_args=client_args, model_id=model_id)
+
+
 class Provider(NamedTuple):
     """How one model provider is built and what reasoning/search/caching it supports."""
 
@@ -437,10 +577,44 @@ _PROVIDERS = {
     "bedrock-mantle": Provider(_bedrock_mantle, "high", _OPENAI_LEVELS, web_search=True, caching=True),
     "anthropic": Provider(_anthropic, "high", _ANTHROPIC_LEVELS, web_search=True, caching=True),
     "openai": Provider(_openai, "high", _OPENAI_LEVELS, web_search=True, caching=True),
+    "xai": Provider(_xai, "high", _XAI_LEVELS, web_search=True, caching=True),
+    "groq": Provider(_groq, None, _GROQ_LEVELS, web_search=False, caching=True),
     "google": Provider(_gemini, "high", _GOOGLE_LEVELS, web_search=True, caching=True),
+    "gemini": Provider(_gemini, "high", _GOOGLE_LEVELS, web_search=True, caching=True),
+    "mistral": Provider(_mistral, None, (), web_search=False, caching=True),
     "ollama": Provider(_ollama, None, (), web_search=False, caching=False),
     "litellm": Provider(_litellm, None, (), web_search=False, caching=True),
 }
+
+
+def resolve_default_model_spec_from_env() -> str:
+    """Resolve the active default ``provider/model_id`` string based on configured API keys in ``os.environ``."""
+    explicit = os.environ.get("STRANDS_DEFAULT_MODEL")
+    if explicit and explicit.strip():
+        return explicit.strip()
+    if os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"):
+        return defaults.DEFAULT_MODEL
+    if os.environ.get("XAI_API_KEY"):
+        return f"xai/{os.environ.get('XAI_MODEL_ID', 'grok-4.7')}"
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return f"anthropic/{os.environ.get('ANTHROPIC_MODEL_ID', 'claude-sonnet-4-6')}"
+    if os.environ.get("OPENAI_API_KEY"):
+        return f"openai/{os.environ.get('OPENAI_MODEL_ID', 'gpt-5.4')}"
+    if os.environ.get("GROQ_API_KEY"):
+        return f"groq/{os.environ.get('GROQ_MODEL_ID', 'llama-3.3-70b-versatile')}"
+    if os.environ.get("MISTRAL_API_KEY"):
+        return f"mistral/{os.environ.get('MISTRAL_MODEL_ID', 'mistral-large-latest')}"
+    if os.environ.get("LITELLM_API_KEY"):
+        return f"litellm/{os.environ.get('LITELLM_MODEL_ID', 'gpt-4o')}"
+    if os.environ.get("OLLAMA_API_KEY") or os.environ.get("OLLAMA_HOST"):
+        return f"ollama/{os.environ.get('OLLAMA_MODEL_ID', 'llama3.2')}"
+    if (
+        os.environ.get("AWS_BEARER_TOKEN_BEDROCK")
+        or os.environ.get("AWS_ACCESS_KEY_ID")
+        or os.environ.get("AWS_PROFILE")
+    ):
+        return f"bedrock/{os.environ.get('BEDROCK_MODEL_ID', 'global.anthropic.claude-sonnet-4-6')}"
+    return defaults.DEFAULT_MODEL
 
 
 EFFORT_LEVELS: tuple[Effort, ...] = ("auto", "off", "minimal", "low", "medium", "high", "xhigh", "max")
@@ -476,12 +650,24 @@ def _effort(
 
 
 def _split_provider(model: str) -> tuple[str, str]:
-    """Split a ``"provider/name"`` string (or a bare Gemini / Bedrock id) into ``(provider, name)``."""
+    """Split a ``"provider/name"`` string (or a bare Gemini / Grok / Claude / GPT / Mistral / Groq / Bedrock id) into ``(provider, name)``."""
     provider_name, sep, name = model.partition("/")
     if not sep:
         if model.startswith("gemini-"):
             return "google", model
+        if model.startswith("grok-"):
+            return "xai", model
+        if model.startswith("claude-"):
+            return "anthropic", model
+        if model.startswith(("gpt-", "o1-", "o3-", "o4-")) or model in ("o1", "o3", "o4"):
+            return "openai", model
+        if model.startswith(("mistral-", "codestral-", "pixtral-", "ministral-")):
+            return "mistral", model
+        if model.startswith(("llama-3.3-", "llama-3.1-", "deepseek-r1-distill-", "qwen-qwq-")):
+            return "groq", model
         return "bedrock", model
+    if provider_name == "gemini":
+        return "google", name
     return provider_name, name
 
 
@@ -505,17 +691,17 @@ def supports_web_search(model: Model | ModelRouter | str | None) -> bool:
     """Whether native web search can be enabled for ``model``.
 
     A ``Model`` or ``ModelRouter`` instance has an unknown provider, so this is ``False``; the
-    caller configures search on the instance directly. ``None`` resolves to the default model.
+    caller configures search on the instance directly. ``None`` resolves to the active default model.
     """
     if isinstance(model, (Model, ModelRouter)):
         return False
-    return _has_web_search(*_split_provider(model or defaults.DEFAULT_MODEL))
+    return _has_web_search(*_split_provider(model or resolve_default_model_spec_from_env()))
 
 
 def supports_thinking(model: Model | str | None) -> bool:
     if isinstance(model, Model):
         return True
-    provider_name, name = _split_provider(model or defaults.DEFAULT_MODEL)
+    provider_name, name = _split_provider(model or resolve_default_model_spec_from_env())
     if provider_name == "bedrock":
         return bool(_bedrock_levels(name))
     if provider_name == "anthropic":
@@ -537,7 +723,7 @@ def _supports_media(model: Model | ModelRouter | str | None) -> bool:
         return _supports_media(model_id) if isinstance(model_id, str) else True
     if isinstance(model, Model):
         return True
-    provider_name, name = _split_provider(model or defaults.DEFAULT_MODEL)
+    provider_name, name = _split_provider(model or resolve_default_model_spec_from_env())
     if provider_name == "bedrock":
         return not _bedrock_family(name).startswith("openai.")
     return True
@@ -552,6 +738,8 @@ def resolve_model(
     caching_explicit: bool = False,
     *,
     gemini_tools: Sequence[str | Mapping[str, Any] | pydantic.BaseModel] | None = None,
+    xai_tools: Sequence[str | Mapping[str, Any]] | None = None,
+    xai_native_tools: bool = True,
 ) -> Model | ModelRouter:
     """Resolve the ``model`` argument into a model or router instance.
 
@@ -569,9 +757,13 @@ def resolve_model(
             logger.warning("prompt caching not applied to %s; configure it on the instance", instance)
         return model
 
-    use_default_router = model is None and default == defaults.DEFAULT_MODEL
     if model is None:
+        if default == defaults.DEFAULT_MODEL:
+            default = resolve_default_model_spec_from_env()
+        use_default_router = default == defaults.DEFAULT_MODEL
         model = default
+    else:
+        use_default_router = False
 
     provider_name, name = _split_provider(model)
 
@@ -619,6 +811,17 @@ def resolve_model(
             gemini_tools=gemini_tools,
         )
 
+    if provider_name == "xai":
+        level = _effort(effort, provider.recommended_thinking, provider.thinking_levels, f"xAI model {name}")
+        return _xai(
+            name,
+            level,
+            native_search,
+            caching and provider.caching,
+            xai_tools=xai_tools,
+            include_default_tools=xai_native_tools,
+        )
+
     levels = provider.thinking_levels
     recommended = provider.recommended_thinking
     subject = "this provider"
@@ -656,13 +859,13 @@ def resolve_web_fetch_model(
     if isinstance(web_fetch_model, Model):
         return web_fetch_model
     if web_fetch_model is not None:
-        return _concrete_model(resolve_model(web_fetch_model, web_fetch_model, effort="off"))
+        return _concrete_model(resolve_model(web_fetch_model, web_fetch_model, effort="off", xai_native_tools=False))
 
     if isinstance(main_model, ModelRouter):
         return main_model.default_model
     if isinstance(main_model, Model):
         return main_model
-    main = main_model if main_model is not None else defaults.DEFAULT_MODEL
+    main = main_model if main_model is not None else resolve_default_model_spec_from_env()
     provider_name, name = _split_provider(main)
     if provider_name == "bedrock":
         small = _bedrock_web_fetch_model(name)
@@ -672,14 +875,14 @@ def resolve_web_fetch_model(
                 "summarizer; reusing the main model. Set builtin_tools={'web_fetch': {'model': ...}} to choose a "
                 "smaller one."
             )
-            return _concrete_model(resolve_model(main, main, effort="off"))
+            return _concrete_model(resolve_model(main, main, effort="off", xai_native_tools=False))
     elif (base_url_var := _CUSTOM_ENDPOINT_VARS.get(provider_name)) and os.environ.get(base_url_var):
         logger.warning(
             f"model=<{main}> | {base_url_var} points provider <{provider_name}> at a non-default "
             "endpoint, which serves its own model list, so the vended summarizer may not exist "
             "there; reusing the main model. Pass web_fetch_model to choose a smaller one."
         )
-        return _concrete_model(resolve_model(main, main, effort="off"))
+        return _concrete_model(resolve_model(main, main, effort="off", xai_native_tools=False))
     else:
         small = _WEB_FETCH_MODELS.get(provider_name)
     if small is None:
@@ -689,12 +892,12 @@ def resolve_web_fetch_model(
                 f"<{provider_name}>; reusing the main model. Set builtin_tools={{'web_fetch': {{'model': ...}}}} "
                 "to choose another model."
             )
-            return _concrete_model(resolve_model(main, main, effort="off"))
+            return _concrete_model(resolve_model(main, main, effort="off", xai_native_tools=False))
         raise ValueError(
             f"No default web_fetch model for provider {provider_name!r}. "
             "Set builtin_tools={'web_fetch': {'model': ...}} explicitly, or disable web_fetch via builtin_tools."
         )
-    return _concrete_model(resolve_model(f"{provider_name}/{small}", small, effort="off"))
+    return _concrete_model(resolve_model(f"{provider_name}/{small}", small, effort="off", xai_native_tools=False))
 
 
 def _concrete_model(model: Model | ModelRouter) -> Model:

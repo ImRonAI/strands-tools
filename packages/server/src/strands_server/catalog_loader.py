@@ -227,7 +227,12 @@ def _build_create_harness_tool() -> tuple[Tool, Callable[..., object]]:
         model: Annotated[
             str | None,
             Field(
-                description="Model identifier (e.g. 'google/gemini-4-argon', 'gemini-3.8-flash', or 'stub')."
+                description=(
+                    "Model identifier (e.g. 'xai/grok-4.7', 'groq/llama-3.3-70b-versatile', "
+                    "'anthropic/claude-sonnet-4-6', 'openai/gpt-5.4', 'google/gemini-4-argon', "
+                    "'mistral/mistral-large-latest', 'bedrock/...', 'litellm/...', 'ollama/...', or 'stub'). "
+                    "If omitted, automatically resolves from configured API keys."
+                )
             ),
         ] = None,
         workspace: Annotated[
@@ -240,7 +245,7 @@ def _build_create_harness_tool() -> tuple[Tool, Callable[..., object]]:
         ] = "default",
         effort: Annotated[
             Effort,
-            Field(description="Reasoning effort level ('auto', 'minimal', 'low', 'medium', 'high', 'max')."),
+            Field(description="Reasoning effort level ('auto', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max')."),
         ] = "auto",
         include_default_tools: Annotated[
             bool,
@@ -253,6 +258,22 @@ def _build_create_harness_tool() -> tuple[Tool, Callable[..., object]]:
         tools: Annotated[
             list[str] | None,
             Field(description="Additional registered Strands tool names to attach to this harness agent."),
+        ] = None,
+        xai_tools: Annotated[
+            list[str | dict[str, object]] | None,
+            Field(
+                description=(
+                    "Optional native xAI Responses API tools for Grok 4.7 "
+                    "(e.g. ['web_search', 'x_search', 'code_execution', 'file_search']). "
+                    "Defaults to ['web_search', 'x_search', 'code_interpreter'] on xAI."
+                )
+            ),
+        ] = None,
+        gemini_tools: Annotated[
+            list[str | dict[str, object]] | None,
+            Field(
+                description="Optional native Gemini Interactions API tools (e.g. ['google_search', 'code_execution', 'url_context'])."
+            ),
         ] = None,
         session: Annotated[
             str | bool,
@@ -304,6 +325,10 @@ def _build_create_harness_tool() -> tuple[Tool, Callable[..., object]]:
             harness_kwargs["model"] = resolved_model
         if builtin_tools is not None:
             harness_kwargs["builtin_tools"] = builtin_tools
+        if xai_tools is not None:
+            harness_kwargs["xai_tools"] = xai_tools
+        if gemini_tools is not None:
+            harness_kwargs["gemini_tools"] = gemini_tools
 
         create_fn = cast(Callable[..., object], sdk_create_harness)
         agent_obj = create_fn(**harness_kwargs)
@@ -324,6 +349,10 @@ def _build_create_harness_tool() -> tuple[Tool, Callable[..., object]]:
             cfg_record["workspace"] = workspace
         if tools is not None:
             cfg_record["tools"] = list(tools)
+        if xai_tools is not None:
+            cfg_record["xai_tools"] = list(xai_tools)
+        if gemini_tools is not None:
+            cfg_record["gemini_tools"] = list(gemini_tools)
         register_agent_config(name, cfg_record)
 
         as_tool_fn = getattr(agent_obj, "as_tool", None)
@@ -398,7 +427,7 @@ def _load_skills_tools(
     )
 
     from strands_graph_tool.agent_factory import register_factory_tools
-    from strands_graph_tool.graph import StubModel, configure_skills
+    from strands_graph_tool.graph import configure_skills
     from strands_server.skills_provider import get_all_skill_roots
 
     register_available_tools(dict(raw_tool_registry))
@@ -421,7 +450,7 @@ def _load_skills_tools(
 
     configure_skills(
         skills_list,
-        base_agent_model=StubModel("stub_skill"),
+        base_agent_model=None,
         additional_tools=default_skill_tools,
     )
 
@@ -436,7 +465,7 @@ def _load_skills_tools(
         use_skill_obj: object = create_skill_agent_tool(
             typed_skills,
             primary_dir,
-            base_agent_model=StubModel("stub_skill"),
+            base_agent_model=None,
             additional_tools=default_skill_tools,
             tool_registry=dict(raw_tool_registry),
         )

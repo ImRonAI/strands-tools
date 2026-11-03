@@ -343,14 +343,17 @@ class WorkflowManager:
             model_info = "Using parent agent's model"
 
             if model_provider is None:
-                # Use parent agent's model
-                selected_model = self.parent_agent.model if self.parent_agent else None
+                if task.get("model") or task.get("model_id"):
+                    selected_model = str(task.get("model") or task.get("model_id"))
+                    model_info = f"Using task model: {selected_model}"
+                else:
+                    # Use parent agent's model
+                    selected_model = self.parent_agent.model if self.parent_agent else None
             elif model_provider == "env":
                 # Use environment variables
                 try:
-                    env_provider = os.getenv("STRANDS_PROVIDER", "ollama")
-                    selected_model = create_model(provider=env_provider, config=model_settings)
-                    model_info = f"Using environment model: {env_provider}"
+                    selected_model = create_model(provider=None, config=model_settings)
+                    model_info = "Using environment model"
                 except Exception as e:
                     logger.warning(f"Failed to create model from environment: {e}")
                     selected_model = self.parent_agent.model if self.parent_agent else None
