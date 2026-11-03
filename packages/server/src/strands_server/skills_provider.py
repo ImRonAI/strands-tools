@@ -41,8 +41,16 @@ VENDOR_SKILL_CANDIDATES: tuple[Path, ...] = (
 )
 
 
-def get_all_skill_roots(*, include_vendor_roots: bool = True) -> list[Path]:
-    """Return all existing workspace and vendor skill root directories."""
+def get_all_skill_roots(*, include_vendor_roots: bool | None = None) -> list[Path]:
+    """Return all existing workspace and (when enabled) vendor skill root directories."""
+    import os
+
+    if include_vendor_roots is None:
+        include_vendor_roots = os.environ.get("STRANDS_INCLUDE_VENDOR_SKILLS", "").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
     roots: list[Path] = []
     seen: set[Path] = set()
     candidates: list[Path] = [SAMPLE_SKILLS_DIR, SKILLS_DIR]
@@ -60,7 +68,7 @@ def get_skills_directory_provider(
     *,
     supporting_files: Literal["template", "resources"] = "template",
     reload: bool = False,
-    include_vendor_roots: bool = True,
+    include_vendor_roots: bool | None = None,
 ) -> SkillsDirectoryProvider:
     """Return a cached `SkillsDirectoryProvider` exposing all Strands Agent Skills as `skill://` MCP resources."""
     cache_key = f"{supporting_files}:{reload}:{include_vendor_roots}"

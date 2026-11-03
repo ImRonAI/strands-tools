@@ -30,6 +30,13 @@ for _extra_path in (
     if _extra_str not in sys.path:
         sys.path.insert(0, _extra_str)
 
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(_REPO_ROOT / ".env", override=False)
+except Exception:
+    pass
+
 import mcp_types
 from fastmcp import FastMCP
 from fastmcp.apps.approval import Approval

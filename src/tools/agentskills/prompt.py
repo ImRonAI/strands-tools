@@ -5,18 +5,25 @@ This module provides XML-formatted prompt generation following the AgentSkills.i
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
 from .models import SkillProperties
 
-# Directory paths for agent file operations
+# Directory paths for agent file operations (fall back to tempfile on read-only container filesystems)
 ROOT_DIR = Path(__file__).parent.parent  # Project root
 SCRATCH_DIR = ROOT_DIR / "_scratch"
 OUTPUT_DIR = ROOT_DIR / "_output"
 
-# Ensure directories exist
-SCRATCH_DIR.mkdir(parents=True, exist_ok=True)
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    SCRATCH_DIR.mkdir(parents=True, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+except OSError:
+    _TMP_ROOT = Path(tempfile.gettempdir()) / "strands_agentskills"
+    SCRATCH_DIR = _TMP_ROOT / "_scratch"
+    OUTPUT_DIR = _TMP_ROOT / "_output"
+    SCRATCH_DIR.mkdir(parents=True, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 DEFAULT_SYSTEM_PROMPT = """

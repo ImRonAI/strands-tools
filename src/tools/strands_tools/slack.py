@@ -187,10 +187,14 @@ socket_client = None
 
 # Event storage configuration
 EVENTS_DIR = Path.cwd() / "slack_events"
-EVENTS_FILE = EVENTS_DIR / "events.jsonl"
+try:
+    EVENTS_DIR.mkdir(parents=True, exist_ok=True)
+except OSError:
+    import tempfile as _tempfile
 
-# Make sure events directory exists
-EVENTS_DIR.mkdir(parents=True, exist_ok=True)
+    EVENTS_DIR = Path(_tempfile.gettempdir()) / "slack_events"
+    EVENTS_DIR.mkdir(parents=True, exist_ok=True)
+EVENTS_FILE = EVENTS_DIR / "events.jsonl"
 
 
 def initialize_slack_clients():

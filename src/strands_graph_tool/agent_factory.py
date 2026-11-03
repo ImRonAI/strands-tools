@@ -303,6 +303,19 @@ def _resolve_single_tool(
     raise ValueError(f"Unknown or unresolvable tool '{name}' in agent configuration.")
 
 
+_SUPPORTED_PROVIDER_PREFIXES = (
+    "google/",
+    "gemini/",
+    "gemini-",
+    "anthropic/",
+    "openai/",
+    "bedrock/",
+    "bedrock-mantle/",
+    "litellm/",
+    "ollama/",
+)
+
+
 def _resolve_gemini_or_configured_model(
     cfg_dict: ConfigMapping,
     *,
@@ -317,8 +330,13 @@ def _resolve_gemini_or_configured_model(
         mid = model_id_key.strip()
         if model_factories and mid in model_factories:
             return model_factories[mid]()
-        if mid.startswith(("google/", "gemini/", "gemini-")):
-            spec = mid if "/" in mid else f"google/{mid}"
+        if mid.startswith(_SUPPORTED_PROVIDER_PREFIXES):
+            if mid.startswith("gemini/"):
+                spec = f"google/{mid.split('/', 1)[1]}"
+            elif mid.startswith("gemini-"):
+                spec = f"google/{mid}"
+            else:
+                spec = mid
             return resolve_model(
                 spec,
                 harness_defaults.DEFAULT_MODEL,
@@ -334,7 +352,11 @@ def _resolve_gemini_or_configured_model(
             if model_factories and m_str in model_factories:
                 return model_factories[m_str]()
             if m_str.startswith(("google/", "gemini/", "gemini-")):
-                spec = m_str if "/" in m_str else f"google/{m_str}"
+                spec = (
+                    f"google/{m_str.split('/', 1)[1]}"
+                    if m_str.startswith("gemini/")
+                    else (m_str if "/" in m_str else f"google/{m_str}")
+                )
                 return resolve_model(
                     spec,
                     harness_defaults.DEFAULT_MODEL,

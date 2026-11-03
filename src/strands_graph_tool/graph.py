@@ -268,6 +268,27 @@ def ensure_default_skills_configured() -> None:
         pass
 
 
+_SUPPORTED_PROVIDER_PREFIXES = (
+    "google/",
+    "gemini/",
+    "gemini-",
+    "anthropic/",
+    "openai/",
+    "bedrock/",
+    "bedrock-mantle/",
+    "litellm/",
+    "ollama/",
+)
+
+
+def _normalize_provider_spec(model_str: str) -> str:
+    if model_str.startswith("gemini/"):
+        return f"google/{model_str.split('/', 1)[1]}"
+    if model_str.startswith("gemini-"):
+        return f"google/{model_str}"
+    return model_str
+
+
 def _resolve_model(
     spec: ConfigMapping,
     parent_agent: Agent | None,
@@ -281,8 +302,8 @@ def _resolve_model(
     if model_id is not None:
         if isinstance(model_id, str) and model_id in factories:
             return factories[model_id]()
-        if isinstance(model_id, str) and model_id.startswith(("google/", "gemini/", "gemini-")):
-            target = model_id if "/" in model_id else f"google/{model_id}"
+        if isinstance(model_id, str) and model_id.startswith(_SUPPORTED_PROVIDER_PREFIXES):
+            target = _normalize_provider_spec(model_id)
             return resolve_model(target, harness_defaults.DEFAULT_MODEL, gemini_tools=gemini_tools)
         raise ValueError(f"Unknown model_id: {model_id}")
     if "model" in spec and spec["model"] is not None:
@@ -290,8 +311,8 @@ def _resolve_model(
         if isinstance(raw_model, str):
             if raw_model in factories:
                 return factories[raw_model]()
-            if raw_model.startswith(("google/", "gemini/", "gemini-")):
-                target = raw_model if "/" in raw_model else f"google/{raw_model}"
+            if raw_model.startswith(_SUPPORTED_PROVIDER_PREFIXES):
+                target = _normalize_provider_spec(raw_model)
                 return resolve_model(target, harness_defaults.DEFAULT_MODEL, gemini_tools=gemini_tools)
         if not is_config_mapping(raw_model):
             return raw_model
@@ -387,7 +408,7 @@ def _build_agent(
         if (
             raw_mid is not None
             and not (isinstance(raw_mid, str) and raw_mid in factories)
-            and not (isinstance(raw_mid, str) and raw_mid.startswith(("google/", "gemini/", "gemini-")))
+            and not (isinstance(raw_mid, str) and raw_mid.startswith(_SUPPORTED_PROVIDER_PREFIXES))
         ):
             raise ValueError(f"Unknown model_id: {raw_mid}")
         return build_agent_from_config(

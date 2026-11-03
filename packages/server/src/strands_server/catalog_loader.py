@@ -405,7 +405,7 @@ def _load_skills_tools(
     register_factory_tools(raw_tool_registry)
 
     all_skills: dict[str, object] = {}
-    for folder in get_all_skill_roots(include_vendor_roots=True):
+    for folder in get_all_skill_roots():
         if folder.exists():
             for s in discover_skills(folder):
                 if s.name not in all_skills:

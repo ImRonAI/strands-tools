@@ -11,10 +11,16 @@ from rich.syntax import Syntax
 from rich.table import Table
 from strands import tool
 
+import tempfile
+
 console = Console()
 
 TEMPLATE_DIR = Path.cwd() / "templates"
-TEMPLATE_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    TEMPLATE_DIR.mkdir(parents=True, exist_ok=True)
+except OSError:
+    TEMPLATE_DIR = Path(tempfile.gettempdir()) / "strands_templates"
+    TEMPLATE_DIR.mkdir(parents=True, exist_ok=True)
 
 env = Environment(
     loader=FileSystemLoader(str(TEMPLATE_DIR)),

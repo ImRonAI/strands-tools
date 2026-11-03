@@ -102,7 +102,13 @@ except ImportError:
 DUMP_DIR = Path(
     os.getenv("STRANDS_INSPECT_DUMP_DIR", os.path.join(os.path.expanduser("~"), ".strands_inspect"))
 )
-DUMP_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    DUMP_DIR.mkdir(parents=True, exist_ok=True)
+except OSError:
+    import tempfile as _tempfile
+
+    DUMP_DIR = Path(_tempfile.gettempdir()) / ".strands_inspect"
+    DUMP_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # ─── Policies ───────────────────────────────────────────────────────
