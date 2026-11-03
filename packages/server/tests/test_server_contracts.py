@@ -415,3 +415,140 @@ async def test_auth_status_and_credentials_configuration(
     rows = payload.get("rows", [])
     assert "strands_google" in str(rows)
     assert "strands_ccxt" in str(rows)
+
+
+async def test_resources_as_tools_and_prompts_as_tools_inside_code_mode(
+    mcp_client: Client[ClientTransport],
+) -> None:
+    """Verify `ResourcesAsTools` (`list_resources`, `read_resource`) and `PromptsAsTools`
+    (`list_prompts`, `get_prompt`) are discoverable and callable inside `execute`.
+    """
+    schema_res = await mcp_client.call_tool(
+        "get_schema",
+        {"tools": ["list_resources", "read_resource", "list_prompts", "get_prompt"]},
+    )
+    assert not schema_res.is_error
+    schema_text = str(schema_res.content)
+    assert "read_resource" in schema_text
+    assert "get_prompt" in schema_text
+
+    exec_res = await mcp_client.call_tool(
+        "execute",
+        {
+            "code": (
+                "skill_md = await call_tool('read_resource', {'uri': 'skill://file-processing/SKILL.md'})\n"
+                "manifest = await call_tool('read_resource', {'uri': 'skill://file-processing/_manifest'})\n"
+                "prompts = await call_tool('list_prompts', {})\n"
+                "activated = await call_tool('get_prompt', {'name': 'activate_skill', 'arguments': {'skill_name': 'file-processing', 'task': 'Parse CSV'}})\n"
+                "return {'skill_md': skill_md, 'manifest': manifest, 'prompts': prompts, 'activated': activated}"
+            )
+        },
+    )
+    assert not exec_res.is_error
+    text_out = str(exec_res.structured_content)
+    assert "file-processing" in text_out
+    assert "process.py" in text_out
+    assert "activate_skill" in text_out
+    assert "Parse CSV" in text_out
+
+
+async def test_interactive_apps_and_unbounded_code_mode_limits(
+    mcp_client: Client[ClientTransport],
+) -> None:
+    """Verify interactive app tools (`request_approval`, `choose`, `upload_files`, `list_uploaded_files`,
+    `read_uploaded_file`) are registered and CodeMode has no blind 25-call or 100-tool truncation limits.
+    """
+    schema_res = await mcp_client.call_tool(
+        "get_schema",
+        {
+            "tools": [
+                "request_approval",
+                "choose",
+                "upload_files",
+                "list_uploaded_files",
+                "read_uploaded_file",
+            ]
+        },
+    )
+    assert not schema_res.is_error
+    schema_text = str(schema_res.content)
+    for app_tool in (
+        "request_approval",
+        "choose",
+        "upload_files",
+        "list_uploaded_files",
+        "read_uploaded_file",
+    ):
+        assert app_tool in schema_text
+
+    # Verify > 25 tool calls in a single `execute` script succeed (no 25-call cap)
+    # and `configure_skill_tools(action='list_assignable')` returns all registered tools without [:100] slicing
+    many_calls_res = await mcp_client.call_tool(
+        "execute",
+        {
+            "code": (
+                "results = []\n"
+                "for i in range(30):\n"
+                "    r = await call_tool('calculator', {'expression': f'{i} + 1'})\n"
+                "    results.append(r)\n"
+                "assignable = await call_tool('configure_skill_tools', {'action': 'list_assignable'})\n"
+                "skills_info = await call_tool('list_available_skills', {'query': 'file-processing'})\n"
+                "return {'call_count': len(results), 'assignable': assignable, 'skills_info': skills_info}"
+            )
+        },
+    )
+    assert not many_calls_res.is_error
+    sc = many_calls_res.structured_content or {}
+    payload: object = sc.get("result", sc)
+    assert _is_str_mapping(payload)
+    assert payload.get("call_count") == 30
+    assignable = payload.get("assignable")
+    assert _is_str_mapping(assignable)
+    sample_list = assignable.get("sample_assignable_tools")
+    total_count = assignable.get("total_assignable_tools")
+    assert isinstance(sample_list, list)
+    assert isinstance(total_count, int) and total_count > 100
+    assert len(cast(list[object], sample_list)) == total_count
+
+    skills_info = payload.get("skills_info")
+    assert _is_str_mapping(skills_info)
+    assert "skill://file-processing/SKILL.md" in str(skills_info)
+    assert "skill://file-processing/_manifest" in str(skills_info)
+
+
+async def test_argument_completion_and_client_skill_utilities(
+    mcp_client: Client[ClientTransport],
+    tmp_path: Path,
+) -> None:
+    """Verify native `@server.completion` autocompletes skill names and `skill://` template paths,
+    and `strands_client` skill utilities (`list_skills`, `get_skill_manifest`, `download_skill`) work end-to-end.
+    """
+    import mcp_types
+    from strands_client import download_skill, get_skill_manifest, list_skills
+
+    comp_skill = await mcp_client.complete(
+        mcp_types.PromptReference(type="ref/prompt", name="activate_skill"),
+        argument={"name": "skill_name", "value": "file-proc"},
+    )
+    assert "file-processing" in comp_skill.values
+
+    comp_path = await mcp_client.complete(
+        mcp_types.ResourceTemplateReference(
+            type="ref/resource",
+            uri="skill://file-processing/{path*}",
+        ),
+        argument={"name": "path", "value": "scripts/"},
+    )
+    assert any("process.py" in v for v in comp_path.values)
+
+    summaries = await list_skills(mcp_client)
+    names = {s.name for s in summaries}
+    assert "file-processing" in names
+
+    manifest = await get_skill_manifest(mcp_client, "file-processing")
+    assert manifest.name == "file-processing"
+    assert any(f.path == "SKILL.md" for f in manifest.files)
+
+    downloaded_path = await download_skill(mcp_client, "file-processing", tmp_path)
+    assert (downloaded_path / "SKILL.md").exists()
+

@@ -8,7 +8,7 @@ For Pattern #3 (Agent as Tool pattern / isolated sub-agents), see agent_skill.py
 
 import logging
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Annotated, Any, List, Optional
 
 from strands import tool
 
@@ -46,7 +46,16 @@ def create_skill_tool(
     lower_map = {s.name.lower(): s for s in skills}
 
     @tool
-    def skill(skill_name: str, resource_path: Optional[str] = None) -> str:
+    def skill(
+        skill_name: Annotated[
+            str,
+            "Name of the AgentSkill to load (use `list_available_skills` or `list_resources` to browse all 697+ skills).",
+        ],
+        resource_path: Annotated[
+            Optional[str],
+            "Optional relative path to a bundled file inside the skill directory (e.g. 'references/guide.md', 'scripts/run.py', 'assets/template.tsx'). Omit to load SKILL.md instructions.",
+        ] = None,
+    ) -> str:
         """Load specialized skill instructions or a bundled skill resource (Pattern #2: Inline Mode).
 
         Args:

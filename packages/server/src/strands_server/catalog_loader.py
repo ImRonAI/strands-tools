@@ -24,6 +24,7 @@ from fastmcp import FastMCP
 from fastmcp.server.transforms import ToolTransform
 from fastmcp.tools.base import Tool
 from fastmcp.tools.tool_transform import ArgTransform, ToolTransformConfig
+from mcp_types import ToolAnnotations
 from pydantic import Field
 from strands_harness.types.agent import Effort
 
@@ -125,6 +126,7 @@ def _build_native_tool(
     domain_suite: str,
     description: str | None = None,
     tags: Iterable[str] = (),
+    annotations: ToolAnnotations | None = None,
 ) -> Tool | None:
     """Register a Strands `@tool` function or Python callable via native `Tool.from_function` and `Tool.from_tool`."""
     fn_candidate: object = getattr(tool_obj, "_tool_func", tool_obj)
@@ -138,6 +140,7 @@ def _build_native_tool(
             name=name,
             description=description,
             tags=tag_set,
+            annotations=annotations,
             meta=meta,
         )
     except Exception as exc:
@@ -157,6 +160,7 @@ def _build_native_tool(
             name=name,
             description=description or base_tool.description,
             tags=tag_set,
+            annotations=annotations,
             meta=meta,
             transform_args=arg_transforms if arg_transforms else None,
         )
@@ -282,7 +286,7 @@ def _build_create_harness_tool() -> tuple[Tool, Callable[..., object]]:
             builtin_tools = []
 
         effective_desc = description or (
-            instructions.splitlines()[0][:200] if instructions else f"Harness agent {name}"
+            instructions.splitlines()[0] if instructions else f"Harness agent {name}"
         )
 
         harness_kwargs: dict[str, object] = {
@@ -395,12 +399,13 @@ def _load_skills_tools(
 
     from strands_graph_tool.agent_factory import register_factory_tools
     from strands_graph_tool.graph import StubModel, configure_skills
+    from strands_server.skills_provider import get_all_skill_roots
 
     register_available_tools(dict(raw_tool_registry))
     register_factory_tools(raw_tool_registry)
 
     all_skills: dict[str, object] = {}
-    for folder in (SAMPLE_SKILLS_DIR, SKILLS_DIR):
+    for folder in get_all_skill_roots(include_vendor_roots=True):
         if folder.exists():
             for s in discover_skills(folder):
                 if s.name not in all_skills:
@@ -444,6 +449,7 @@ def _load_skills_tools(
             domain_suite="skills",
             description="Load instructions and metadata for a specialized AgentSkill on-demand (Pattern #2).",
             tags={"skills", "agent_skills", "pattern2"},
+            annotations=ToolAnnotations(read_only_hint=True, idempotent_hint=True),
         )
         if skill_native is not None:
             tools.append(skill_native)
@@ -495,7 +501,8 @@ def _load_skills_tools(
             )
             return {
                 "registered_tool_count": info.get("registered_tool_count", 0),
-                "sample_assignable_tools": available_list[:100],
+                "sample_assignable_tools": available_list,
+                "assignable_tools": available_list,
                 "total_assignable_tools": len(available_list),
             }
         if action == "set_global":
@@ -514,7 +521,7 @@ def _load_skills_tools(
             Field(description="Optional substring filter on skill name or description."),
         ] = None,
     ) -> dict[str, object]:
-        """List all discovered AgentSkills available to `skill`, `use_skill`, and `graph` nodes."""
+        """List all discovered AgentSkills available to `skill`, `use_skill`, `read_resource` (`skill://`), and `graph` nodes."""
         q = (query or "").strip().lower()
         rows: list[dict[str, object]] = []
         for s in skills_list:
@@ -529,6 +536,9 @@ def _load_skills_tools(
                     "description": s_desc,
                     "skill_dir": s_dir,
                     "allowed_tools": getattr(s, "allowed_tools", None),
+                    "skill_md_uri": f"skill://{s_name}/SKILL.md",
+                    "manifest_uri": f"skill://{s_name}/_manifest",
+                    "template_uri": f"skill://{s_name}/{{path*}}",
                 }
             )
         return {"count": len(rows), "skills": rows}
@@ -543,6 +553,7 @@ def _load_skills_tools(
         list_available_skills,
         name="list_available_skills",
         tags={"skills", "agent_skills", "discovery"},
+        annotations=ToolAnnotations(read_only_hint=True, idempotent_hint=True),
         meta={"domain_suite": "skills"},
     )
     tools.extend([cfg_tool, list_tool])
@@ -552,7 +563,7 @@ def _load_skills_tools(
 
 
 def build_core_capability_transforms() -> ToolTransform:
-    """Return a native FastMCP `ToolTransform` enriching the 5 required capabilities on `operations`."""
+    """Return a native FastMCP `ToolTransform` enriching core orchestration and skill capabilities on `operations`."""
     return ToolTransform(
         {
             "create_harness": ToolTransformConfig(
@@ -570,6 +581,28 @@ def build_core_capability_transforms() -> ToolTransform:
                     "and `assigned_tools`."
                 ),
                 tags={"skills", "skill", "agent_skills", "subagent", "use_skill"},
+            ),
+            "skill": ToolTransformConfig(
+                description=(
+                    "Load the full `SKILL.md` instructions, metadata, or a specific `resource_path` "
+                    "(`references/`, `scripts/`, `assets/`) for any discovered AgentSkill on-demand (Pattern #2)."
+                ),
+                tags={"skills", "skill", "agent_skills", "pattern2", "instructions"},
+            ),
+            "list_available_skills": ToolTransformConfig(
+                description=(
+                    "List all discovered AgentSkills with their `name`, `description`, `skill_dir`, "
+                    "`skill_md_uri` (`skill://{name}/SKILL.md`), `manifest_uri` (`skill://{name}/_manifest`), "
+                    "and `template_uri` (`skill://{name}/{path*}`)."
+                ),
+                tags={"skills", "skill", "agent_skills", "discovery", "manifest"},
+            ),
+            "configure_skill_tools": ToolTransformConfig(
+                description=(
+                    "Inspect or configure tools assigned to Pattern #3 `use_skill` sub-agents "
+                    "(`action`: 'inspect', 'assign_skill', 'set_global', 'list_assignable')."
+                ),
+                tags={"skills", "skill", "agent_skills", "configuration"},
             ),
             "graph": ToolTransformConfig(
                 description=(

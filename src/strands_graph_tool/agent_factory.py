@@ -481,7 +481,7 @@ def build_agent_from_config(
     description = str(
         cfg_dict.get("description")
         or cfg_dict.get("goal")
-        or (system_prompt.splitlines()[0][:200] if system_prompt else f"Specialized agent {node_name}")
+        or (system_prompt.splitlines()[0] if system_prompt else f"Specialized agent {node_name}")
     )
 
     raw_cfg_tools = cfg_dict.get("tools")
@@ -645,7 +645,7 @@ def config_to_preset(
     system_prompt = str(cfg_dict.get("system_prompt") or cfg_dict.get("prompt") or "")
     description = str(
         cfg_dict.get("description")
-        or (system_prompt.splitlines()[0][:200] if system_prompt else f"Preset agent {name}")
+        or (system_prompt.splitlines()[0] if system_prompt else f"Preset agent {name}")
     )
     raw_tools_val = cfg_dict.get("tools")
     raw_tools_list: list[object] = list(raw_tools_val) if is_object_sequence(raw_tools_val) else []

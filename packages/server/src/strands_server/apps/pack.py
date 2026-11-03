@@ -36,7 +36,7 @@ pack_tools_list = register_list_backend(
         data_path=("rows",),
         columns=COLUMNS,
         paging="none",
-        static_args={"query": "strands_pack", "limit": 100},
+        static_args={"query": "strands_pack"},
     ),
 )
 pack_tool_detail = register_detail_backend(

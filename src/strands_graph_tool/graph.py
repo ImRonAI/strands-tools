@@ -156,7 +156,7 @@ class StubModel(Model):
         if last_tool_result_text:
             reply_text = f"[{self.tag}] Completed with tool result ({last_tool_result_text}) [tools: {summary_tools}]"
         else:
-            reply_text = f"[{self.tag}] Executed task ({last_user_text[:120]}) [tools: {summary_tools}]"
+            reply_text = f"[{self.tag}] Executed task ({last_user_text}) [tools: {summary_tools}]"
 
         yield cast(StreamEvent, {"messageStart": {"role": "assistant"}})
         yield cast(StreamEvent, {"contentBlockStart": {"start": {}}})
@@ -411,7 +411,7 @@ def _build_agent(
     description = str(
         spec.get("description")
         or spec.get("goal")
-        or (system_prompt.splitlines()[0][:200] if system_prompt else f"Agent {node_id}")
+        or (system_prompt.splitlines()[0] if system_prompt else f"Agent {node_id}")
     )
     model = _resolve_model(spec, parent_agent)
     resolved_tools = (

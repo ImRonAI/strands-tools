@@ -26,7 +26,7 @@ import sys
 import uuid
 from collections.abc import AsyncIterator, Callable, Iterable
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 from strands import Agent, tool
 from strands.models import Model, ModelRouter
@@ -128,7 +128,7 @@ def _make_references_kb_tool(skill: SkillProperties, ref_files: list[Path]) -> A
         action: str = "search",
         query: str | None = None,
         file_path: str | None = None,
-        max_results: int = 10,
+        max_results: int | None = None,
     ) -> dict[str, Any]:
         """Query the skill's `references/` subdirectory as an authoritative domain knowledge base.
 
@@ -137,7 +137,7 @@ def _make_references_kb_tool(skill: SkillProperties, ref_files: list[Path]) -> A
                 or "read" (read a specific file from `references/`).
             query: Search query string or regex pattern when action="search".
             file_path: Relative file path inside `references/` when action="read".
-            max_results: Maximum number of search matches to return (default 10).
+            max_results: Optional maximum number of search matches to return (None for all matches).
         """
         if action == "list":
             items = [
@@ -218,9 +218,9 @@ def _make_references_kb_tool(skill: SkillProperties, ref_files: list[Path]) -> A
                                 "snippet": snippet,
                             }
                         )
-                        if len(matches) >= max_results:
+                        if max_results is not None and len(matches) >= max_results:
                             break
-                if len(matches) >= max_results:
+                if max_results is not None and len(matches) >= max_results:
                     break
             return {
                 "status": "success",
@@ -255,7 +255,7 @@ def _make_scripts_sandbox_tool(skill: SkillProperties, script_files: list[Path])
         script_path: str | None = None,
         args: list[str] | None = None,
         stdin_text: str | None = None,
-        timeout_seconds: int = 30,
+        timeout_seconds: int | None = None,
     ) -> dict[str, Any]:
         """List, inspect, or execute runnable code from the skill's `scripts/` subdirectory inside an isolated sandbox.
 
@@ -264,7 +264,7 @@ def _make_scripts_sandbox_tool(skill: SkillProperties, script_files: list[Path])
             script_path: Relative path to the script inside `scripts/` (e.g. "extract_text.py").
             args: Optional CLI arguments list to pass to the script when action="run".
             stdin_text: Optional standard input text to pass to the script when action="run".
-            timeout_seconds: Execution timeout in seconds (default 30, max 120).
+            timeout_seconds: Optional execution timeout in seconds (None for no timeout).
         """
         if action == "list":
             items = [
@@ -342,7 +342,7 @@ def _make_scripts_sandbox_tool(skill: SkillProperties, script_files: list[Path])
                 "PYTHONIOENCODING": "utf-8",
                 "PYTHONDONTWRITEBYTECODE": "1",
             }
-            effective_timeout = max(1, min(int(timeout_seconds), 120))
+            effective_timeout = int(timeout_seconds) if timeout_seconds is not None and timeout_seconds > 0 else None
             try:
                 proc = subprocess.run(
                     cmd,
@@ -479,7 +479,7 @@ def _make_assets_component_tool(skill: SkillProperties, asset_files: list[Path])
                     ],
                 }
             raw_bytes = target.read_bytes()
-            b64_preview = base64.b64encode(raw_bytes[:2048]).decode("ascii")
+            b64_full = base64.b64encode(raw_bytes).decode("ascii")
             return {
                 "status": "success",
                 "content": [
@@ -491,7 +491,8 @@ def _make_assets_component_tool(skill: SkillProperties, asset_files: list[Path])
                                 "resource_uri": f"skill://{skill.name}/{rel_skill}",
                                 "mime_type": mime_type or "application/octet-stream",
                                 "size_bytes": len(raw_bytes),
-                                "base64_prefix": b64_preview,
+                                "base64": b64_full,
+                                "base64_prefix": b64_full,
                             },
                             indent=2,
                         )
@@ -681,9 +682,18 @@ def create_skill_agent_tool(
 
     @tool
     async def use_skill(
-        skill_name: str,
-        request: str,
-        assigned_tools: list[str] | None = None,
+        skill_name: Annotated[
+            str,
+            "Name of the AgentSkill to execute in an isolated sub-agent (use `list_available_skills` to discover all 697+ skills).",
+        ],
+        request: Annotated[
+            str,
+            "Task or request for the isolated skill sub-agent to accomplish using the skill's instructions, `references/`, `scripts/`, `assets/`, and `assigned_tools`.",
+        ],
+        assigned_tools: Annotated[
+            list[str] | None,
+            "Optional list of Strands tool names from the server catalog to assign to this skill sub-agent for this execution.",
+        ] = None,
     ) -> AsyncIterator[Any]:
         """Execute a specialized skill in an isolated sub-agent with real-time streaming (Pattern #3).
 
