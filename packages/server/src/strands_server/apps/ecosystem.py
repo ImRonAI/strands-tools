@@ -1,3 +1,4 @@
+# pyright: strict
 """Strands.my Ecosystem & Authentication workspace: All 27+ suites and credential management."""
 
 from fastmcp.apps.app import FastMCPApp
@@ -31,7 +32,7 @@ ecosystem_suites_list = register_list_backend(
     app,
     name="ecosystem_suites_list",
     spec=ListSpec(
-        tool="strands_my_catalog",
+        tool="search",
         data_path=("rows",),
         columns=COLUMNS,
         paging="none",
@@ -41,7 +42,7 @@ ecosystem_suites_list = register_list_backend(
 ecosystem_suite_detail = register_detail_backend(
     app,
     name="ecosystem_suite_detail",
-    tool="strands_my_catalog",
+    tool="search",
     id_param="suite",
     static_args={"action": "list_tools"},
 )

@@ -1,6 +1,7 @@
+# pyright: strict
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import cast
 
 from fastmcp.client.client import CallToolResult
 
@@ -28,32 +29,36 @@ WORKSPACE_DOMAINS: tuple[str, ...] = (
 @dataclass(frozen=True)
 class WorkspacePayload:
     domain: str
-    raw: Mapping[str, Any]
+    raw: Mapping[str, object]
     result: CallToolResult
 
     @property
     def prefab_version(self) -> str:
-        prefab = cast(Mapping[str, Any], self.raw["$prefab"])
+        prefab = cast(Mapping[str, object], self.raw["$prefab"])
         return cast(str, prefab["version"])
 
     @property
-    def view(self) -> Mapping[str, Any]:
-        return cast(Mapping[str, Any], self.raw["view"])
+    def view(self) -> Mapping[str, object]:
+        return cast(Mapping[str, object], self.raw["view"])
 
     @property
     def tool_names(self) -> tuple[str, ...]:
         meta = self.raw.get("_meta")
         if not isinstance(meta, Mapping):
             return ()
-        fastmcp = meta.get("fastmcp")
+        typed_meta = cast(Mapping[str, object], meta)
+        fastmcp = typed_meta.get("fastmcp")
         if not isinstance(fastmcp, Mapping):
             return ()
-        names = fastmcp.get("toolNames")
+        typed_fastmcp = cast(Mapping[str, object], fastmcp)
+        names = typed_fastmcp.get("toolNames")
         if isinstance(names, Mapping):
-            return tuple(name for name in names if isinstance(name, str))
-        if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
+            typed_names_map = cast(Mapping[object, object], names)
+            return tuple(name for name in typed_names_map if isinstance(name, str))
+        if not isinstance(names, list):
             return ()
-        return tuple(names)
+        typed_names_list = cast(list[object], names)
+        return tuple(name for name in typed_names_list if isinstance(name, str))
 
 
 async def open_workspace(

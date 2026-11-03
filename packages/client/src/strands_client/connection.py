@@ -1,3 +1,4 @@
+# pyright: strict
 import datetime
 import inspect
 import ssl
@@ -11,14 +12,14 @@ from fastmcp.client.client import (
     ConnectMode,
     ElicitationHandler,
     LogHandler,
-    MessageHandler,
-    MessageHandlerT,
     ProgressHandler,
     RootsHandler,
     RootsList,
     SamplingHandler,
 )
+from fastmcp.client.messages import MessageHandler, MessageHandlerT
 from fastmcp.client.transports import ClientTransport, StreamableHttpTransport
+from mcp import ClientSession
 from mcp.client.caching import CacheConfig
 from mcp.client.extension import ClientExtension
 
@@ -30,10 +31,10 @@ def connect(
     target: StrandsConnection | str,
     *,
     name: str | None = None,
-    roots: RootsList | RootsHandler | None = None,
-    sampling_handler: SamplingHandler | None = None,
+    roots: RootsList | RootsHandler[object] | None = None,
+    sampling_handler: SamplingHandler[ClientSession, object] | None = None,
     sampling_capabilities: mcp_types.SamplingCapability | None = None,
-    elicitation_handler: ElicitationHandler | None = None,
+    elicitation_handler: ElicitationHandler[object, object] | None = None,
     log_handler: LogHandler | None = None,
     message_handler: MessageHandlerT | MessageHandler | None = None,
     progress_handler: ProgressHandler | None = None,

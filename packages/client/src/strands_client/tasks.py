@@ -1,10 +1,38 @@
+# pyright: strict
 import asyncio
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import cast
 
 from fastmcp.client.client import CallToolResult
-from fastmcp_tasks import ToolTask, call_tool_task
+import fastmcp_tasks
+from fastmcp_tasks import ToolTask
 
 from strands_client.connection import StrandsConnection
+
+
+async def call_tool_task(
+    client: StrandsConnection,
+    name: str,
+    arguments: dict[str, object] | None = None,
+    *,
+    timeout: float | int | None = None,
+    raise_on_error: bool = True,
+    version: str | None = None,
+    meta: dict[str, object] | None = None,
+) -> ToolTask:
+    raw_fn = cast(
+        Callable[..., Awaitable[ToolTask]],
+        getattr(fastmcp_tasks, "call_tool_task"),
+    )
+    return await raw_fn(
+        client,
+        name,
+        arguments,
+        timeout=timeout,
+        raise_on_error=raise_on_error,
+        version=version,
+        meta=meta,
+    )
 
 
 async def await_strands_job_task(
@@ -13,9 +41,9 @@ async def await_strands_job_task(
     kind: str = "pack_job",
     job_id: str | None = None,
     tool_name: str | None = None,
-    tool_args: dict[str, Any] | None = None,
+    tool_args: dict[str, object] | None = None,
 ) -> ToolTask:
-    args: dict[str, Any] = {"kind": kind}
+    args: dict[str, object] = {"kind": kind}
     if job_id is not None:
         args["job_id"] = job_id
     if tool_name is not None:

@@ -1,3 +1,4 @@
+# pyright: strict
 """Strands UTCP workspace: Universal Tool Calling Protocol manual registration & execution."""
 
 from fastmcp.apps.app import FastMCPApp
@@ -36,19 +37,19 @@ utcp_tools_list = register_list_backend(
     app,
     name="utcp_tools_list",
     spec=ListSpec(
-        tool="strands_my_catalog",
+        tool="search",
         data_path=("rows",),
         columns=COLUMNS,
         paging="none",
-        static_args={"action": "list_tools", "suite": "strands_utcp"},
+        static_args={"query": "strands_utcp"},
     ),
 )
 utcp_tool_detail = register_detail_backend(
     app,
     name="utcp_tool_detail",
-    tool="strands_my_catalog",
+    tool="search",
     id_param="query",
-    static_args={"action": "list_tools", "suite": "strands_utcp"},
+    static_args={"query": "strands_utcp"},
 )
 utcp_action_run = register_form_backend(
     app, name="utcp_action_run", tool="utcp", model=UtcpActionForm

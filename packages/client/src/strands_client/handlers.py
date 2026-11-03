@@ -1,3 +1,4 @@
+# pyright: strict
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -35,7 +36,7 @@ class ProgressEvent:
 
 @dataclass(slots=True)
 class ProgressRecorder:
-    events: list[ProgressEvent] = field(default_factory=list)
+    events: list[ProgressEvent] = field(default_factory=lambda: list[ProgressEvent]())
 
     async def __call__(
         self, progress: float, total: float | None, message: str | None
@@ -45,7 +46,7 @@ class ProgressRecorder:
 
 @dataclass(slots=True)
 class LogRecorder:
-    messages: list[LogMessage] = field(default_factory=list)
+    messages: list[LogMessage] = field(default_factory=lambda: list[LogMessage]())
 
     async def __call__(self, message: LogMessage) -> None:
         self.messages.append(message)
@@ -53,7 +54,9 @@ class LogRecorder:
 
 @dataclass(slots=True)
 class NotificationRecorder(MessageHandler):
-    notifications: list[mcp_types.ServerNotification] = field(default_factory=list)
+    notifications: list[mcp_types.ServerNotification] = field(
+        default_factory=lambda: list[mcp_types.ServerNotification]()
+    )
 
     async def on_notification(
         self, message: mcp_types.ServerNotification
@@ -61,17 +64,17 @@ class NotificationRecorder(MessageHandler):
         self.notifications.append(message)
 
 
-def elicitation_handler(response: T) -> ElicitationHandler:
+def elicitation_handler(response: object) -> ElicitationHandler[object, object]:
     async def handler(
         message: str,
-        response_type: type[T] | None,
+        response_type: type[object] | None,
         params: ElicitRequestParams,
         context: RequestContext[ClientSession, object],
-    ) -> T:
+    ) -> object:
         del message, response_type, params, context
         return response
 
-    return cast(ElicitationHandler, handler)
+    return cast(ElicitationHandler[object, object], handler)
 
 
 async def decline(
@@ -94,7 +97,9 @@ async def cancel(
     return ElicitResult(action="cancel")
 
 
-def sampling_handler(response: SamplingHandlerResult) -> SamplingHandler:
+def sampling_handler(
+    response: SamplingHandlerResult,
+) -> SamplingHandler[ClientSession, object]:
     async def handler(
         messages: list[SamplingMessage],
         params: SamplingParams,
@@ -103,7 +108,7 @@ def sampling_handler(response: SamplingHandlerResult) -> SamplingHandler:
         del messages, params, context
         return response
 
-    return cast(SamplingHandler, handler)
+    return cast(SamplingHandler[ClientSession, object], handler)
 
 
 def roots(paths: Iterable[str | Path]) -> list[str]:

@@ -1,3 +1,4 @@
+# pyright: strict
 """Strands Telegram workspace: Telegram Bot API & background Telegram Listener."""
 
 from fastmcp.apps.app import FastMCPApp
@@ -33,19 +34,19 @@ telegram_tools_list = register_list_backend(
     app,
     name="telegram_tools_list",
     spec=ListSpec(
-        tool="strands_my_catalog",
+        tool="search",
         data_path=("rows",),
         columns=COLUMNS,
         paging="none",
-        static_args={"action": "list_tools", "suite": "telegram"},
+        static_args={"query": "telegram"},
     ),
 )
 telegram_tool_detail = register_detail_backend(
     app,
     name="telegram_tool_detail",
-    tool="strands_my_catalog",
+    tool="search",
     id_param="query",
-    static_args={"action": "list_tools", "suite": "telegram"},
+    static_args={"query": "telegram"},
 )
 telegram_listener_run = register_form_backend(
     app, name="telegram_listener_run", tool="telegram_listener", model=TelegramListenerStatusForm

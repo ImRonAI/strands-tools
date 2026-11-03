@@ -1,3 +1,4 @@
+# pyright: strict
 """HTTP/Stdio entry point: `fastmcp run fastmcp.json` or `python -m strands_server`."""
 
 from __future__ import annotations
@@ -5,8 +6,9 @@ from __future__ import annotations
 import json
 import os
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import TypeGuard
 
 _SERVER_SRC = Path(__file__).resolve().parent.parent
 _REPO_ROOT = _SERVER_SRC.parents[2]
@@ -20,12 +22,11 @@ for _extra_path in (
     if _extra_str not in sys.path:
         sys.path.insert(0, _extra_str)
 
-import fastmcp
 from fastmcp import FastMCP
 
 from strands_server.auth.provider import build_auth
 from strands_server.runtime.cors import browser_cors_middleware, browser_origins_from_env
-from strands_server.runtime.storage import ENCRYPTION_KEY_ENV, build_client_storage
+from strands_server.runtime.storage import build_client_storage
 from strands_server.server import build_server
 
 SINGLE_TENANT_ACCESS_TOKEN_ENV = "STRANDS_ACCESS_TOKEN"
@@ -33,6 +34,10 @@ FALLBACK_ACCESS_TOKEN_ENV = "OUBLIAI_ACCESS_TOKEN"
 PLATFORM_AUTH_ENV = "STRANDS_PLATFORM_AUTH"
 FALLBACK_PLATFORM_AUTH_ENV = "OUBLIAI_PLATFORM_AUTH"
 _MIN_ACCESS_TOKEN_LENGTH = 24
+
+
+def _is_obj_sequence(val: object) -> TypeGuard[Sequence[object]]:
+    return isinstance(val, Sequence) and not isinstance(val, (str, bytes))
 
 
 def create_server() -> FastMCP:
@@ -69,23 +74,25 @@ def create_server() -> FastMCP:
         "OUBLIAI_ALLOWED_CLIENT_REDIRECT_URIS"
     )
     if base_url and client_id and client_secret and jwt_signing_key and redirect_uris_raw:
-        auth = build_auth(
+        raw_loaded: object = json.loads(redirect_uris_raw)
+        redirect_uris = [str(u) for u in raw_loaded] if _is_obj_sequence(raw_loaded) else []
+        oauth_auth = build_auth(
             base_url=base_url,
             client_id=client_id,
             client_secret=client_secret,
             jwt_signing_key=jwt_signing_key,
-            allowed_client_redirect_uris=json.loads(redirect_uris_raw),
+            allowed_client_redirect_uris=redirect_uris,
             client_storage=build_client_storage(),
         )
-        return build_server(auth=auth)
+        return build_server(auth=oauth_auth)
 
     return build_server(auth=None)
 
 
-def run_options() -> dict[str, Any]:
+def run_options() -> dict[str, object]:
     """Keyword arguments for `FastMCP.run()`; CORS when browser origins are configured."""
     transport = os.environ.get("STRANDS_MCP_TRANSPORT", "http")
-    options: dict[str, Any] = {"transport": transport}
+    options: dict[str, object] = {"transport": transport}
     if transport == "http":
         origins = browser_origins_from_env(os.environ)
         if origins:
@@ -95,7 +102,12 @@ def run_options() -> dict[str, Any]:
 
 
 def main() -> None:
-    create_server().run(**run_options())
+    opts = run_options()
+    transport_val = str(opts.get("transport", "http"))
+    if transport_val == "stdio":
+        create_server().run(transport="stdio")
+    else:
+        create_server().run(transport="http")
 
 
 if __name__ == "__main__":

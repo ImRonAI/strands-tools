@@ -26,3 +26,10 @@ where = ["src"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = ["deno: requires the Deno runtime"]
+
+[tool.pyright]
+venvPath = "../.."
+venv = ".venv"
+typeCheckingMode = "strict"
+include = ["src", "tests"]
+extraPaths = ["src", "../server/src"]

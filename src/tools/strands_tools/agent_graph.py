@@ -5,14 +5,15 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from queue import Queue
 from threading import Lock
-from typing import Any, Dict, List
+from typing import Annotated, Any, Dict, List, Literal, Optional
 
 from rich.box import ROUNDED
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.tree import Tree
-from strands.types.tools import ToolResult, ToolUse
+from strands import tool
+from strands.types.tools import ToolResult
 
 from strands_tools.use_llm import use_llm
 from strands_tools.utils import console_util
@@ -24,140 +25,6 @@ logger = logging.getLogger(__name__)
 MAX_THREADS = 10
 MESSAGE_PROCESSING_DELAY = 0.1  # seconds
 MAX_QUEUE_SIZE = 1000
-
-TOOL_SPEC = {
-    "name": "agent_graph",
-    "description": """Create and manage graphs of agents with different topologies and communication patterns.
-
-Key Features:
-1. Multiple topology support (star, mesh, hierarchical)
-2. Dynamic message routing
-3. Parallel agent execution
-4. Real-time status monitoring
-5. Flexible agent configuration
-
-Example Usage:
-
-1. Create a new agent graph:
-{
-    "action": "create",
-    "graph_id": "analysis_graph",
-    "topology": {
-        "type": "star",
-        "nodes": [
-            {
-                "id": "central",
-                "role": "coordinator",
-                "system_prompt": "You are the central coordinator."
-            },
-            {
-                "id": "agent1",
-                "role": "analyzer",
-                "system_prompt": "You are a data analyzer."
-            }
-        ],
-        "edges": [
-            {"from": "central", "to": "agent1"}
-        ]
-    }
-}
-
-2. Send a message:
-{
-    "action": "message",
-    "graph_id": "analysis_graph",
-    "message": {
-        "target": "agent1",
-        "content": "Analyze this data pattern..."
-    }
-}
-
-3. Check graph status:
-{
-    "action": "status",
-    "graph_id": "analysis_graph"
-}
-
-4. List all graphs:
-{
-    "action": "list"
-}
-
-5. Stop a graph:
-{
-    "action": "stop",
-    "graph_id": "analysis_graph"
-}
-
-Topology Types:
-- star: Central node with radiating connections
-- mesh: All nodes connected to each other
-- hierarchical: Tree-like structure with parent-child relationships
-
-Node Configuration:
-- id: Unique identifier for the node
-- role: Function/purpose of the agent
-- system_prompt: Agent's system instructions""",
-    "inputSchema": {
-        "json": {
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string",
-                    "enum": ["create", "list", "stop", "message", "status"],
-                    "description": "Action to perform with the agent graph",
-                },
-                "graph_id": {
-                    "type": "string",
-                    "description": "Unique identifier for the agent graph",
-                },
-                "topology": {
-                    "type": "object",
-                    "description": "Graph topology definition with type, nodes, and edges",
-                    "properties": {
-                        "type": {
-                            "type": "string",
-                            "enum": ["star", "mesh", "hierarchical"],
-                            "description": "Type of graph topology",
-                        },
-                        "nodes": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "id": {"type": "string"},
-                                    "role": {"type": "string"},
-                                    "system_prompt": {"type": "string"},
-                                },
-                            },
-                            "description": "List of agent nodes",
-                        },
-                        "edges": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "from": {"type": "string"},
-                                    "to": {"type": "string"},
-                                },
-                            },
-                            "description": "List of connections between nodes",
-                        },
-                    },
-                },
-                "message": {
-                    "type": "object",
-                    "properties": {
-                        "target": {"type": "string", "description": "Target node ID"},
-                        "content": {"type": "string", "description": "Message content"},
-                    },
-                    "description": "Message to send to the graph",
-                },
-            },
-            "required": ["action"],
-        }
-    },
-}
 
 
 def create_rich_table(console: Console, title: str, headers: List[str], rows: List[List[str]]) -> str:
@@ -251,14 +118,9 @@ class AgentNode:
                     try:
                         # Process message with LLM
                         result = use_llm(
-                            {
-                                "toolUseId": str(uuid.uuid4()),
-                                "input": {
-                                    "system_prompt": self.system_prompt,
-                                    "prompt": message["content"],
-                                },
-                            },
-                            **tool_context,
+                            prompt=message["content"],
+                            system_prompt=self.system_prompt,
+                            agent=tool_context.get("agent"),
                         )
 
                         if result.get("status") == "success":
@@ -500,19 +362,39 @@ def get_manager(tool_context: Dict[str, Any]) -> AgentGraphManager:
         return _MANAGER
 
 
-def agent_graph(tool: ToolUse, **kwargs: Any) -> ToolResult:
+@tool
+def agent_graph(
+    action: Annotated[
+        Literal["create", "list", "stop", "message", "status"],
+        "Action to perform with the agent graph",
+    ],
+    graph_id: Annotated[
+        Optional[str],
+        "Unique identifier for the agent graph",
+    ] = None,
+    topology: Annotated[
+        Optional[Dict[str, Any]],
+        "Graph topology definition with type ('star', 'mesh', 'hierarchical'), nodes, and edges",
+    ] = None,
+    message: Annotated[
+        Optional[Dict[str, Any]],
+        "Message to send to the graph ({'target': str, 'content': str})",
+    ] = None,
+    agent: Optional[Any] = None,
+) -> ToolResult:
     """
-    Create and manage graphs of AI agents.
+    Create and manage graphs of AI agents with different topologies (star, mesh, hierarchical) and communication patterns.
     """
     console = console_util.create()
 
-    tool_use_id = tool.get("toolUseId", str(uuid.uuid4()))
-    tool_input = tool.get("input", {})
-    bedrock_client = kwargs.get("bedrock_client")
-    system_prompt = kwargs.get("system_prompt")
-    inference_config = kwargs.get("inference_config")
-    messages = kwargs.get("messages")
-    tool_config = kwargs.get("tool_config")
+    tool_use_id = str(uuid.uuid4())
+    tool_input: Dict[str, Any] = {"action": action}
+    if graph_id is not None:
+        tool_input["graph_id"] = graph_id
+    if topology is not None:
+        tool_input["topology"] = topology
+    if message is not None:
+        tool_input["message"] = message
 
     logger.warning(
         "DEPRECATION WARNING: agent_graph will be removed in the next major release. "
@@ -521,12 +403,8 @@ def agent_graph(tool: ToolUse, **kwargs: Any) -> ToolResult:
 
     try:
         # Create tool context
-        tool_context = {
-            "bedrock_client": bedrock_client,
-            "system_prompt": system_prompt,
-            "inference_config": inference_config,
-            "messages": messages,
-            "tool_config": tool_config,
+        tool_context: Dict[str, Any] = {
+            "agent": agent,
         }
 
         # Get manager instance thread-safely

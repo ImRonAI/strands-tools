@@ -1,3 +1,4 @@
+# pyright: strict
 """Strands Harness SDK Tools workspace: Sandbox files, Monty programmatic tool caller, subagent, web_fetch, Exa."""
 
 from fastmcp.apps.app import FastMCPApp
@@ -45,19 +46,19 @@ harness_tools_list = register_list_backend(
     app,
     name="harness_tools_list",
     spec=ListSpec(
-        tool="strands_my_catalog",
+        tool="search",
         data_path=("rows",),
         columns=COLUMNS,
         paging="none",
-        static_args={"action": "list_tools", "suite": "strands_harness"},
+        static_args={"query": "strands_harness"},
     ),
 )
 harness_tool_detail = register_detail_backend(
     app,
     name="harness_tool_detail",
-    tool="strands_my_catalog",
+    tool="search",
     id_param="query",
-    static_args={"action": "list_tools", "suite": "strands_harness"},
+    static_args={"query": "strands_harness"},
 )
 harness_ptc_run = register_form_backend(
     app, name="harness_ptc_run", tool="programmatic_tool_caller", model=MontyPtcForm

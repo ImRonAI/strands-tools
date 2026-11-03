@@ -1,3 +1,4 @@
+# pyright: strict
 """Server composition: Strands tool suites + FastMCPApp workspaces behind CodeMode, plus native GenerativeUI.
 
 Mirrors the TelnyxMCP FastMCP 4.1.0 reference architecture:
@@ -13,9 +14,7 @@ import logging
 import os
 import shutil
 import sys
-from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 for _extra_path in (
@@ -33,8 +32,7 @@ from fastmcp.apps.generative import GenerativeUI
 from fastmcp.experimental.transforms.code_mode import CodeMode, GetSchemas, GetTags, Search
 from fastmcp.mcp_config import MCPConfig, RemoteMCPServer, StdioMCPServer
 from fastmcp.server import create_proxy
-from fastmcp.server.providers.addressing import parse_hashed_backend_name
-from fastmcp.tools.base import Tool
+from fastmcp.server.auth import AuthProvider
 from fastmcp_tasks import TasksExtension
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -50,26 +48,9 @@ DEFAULT_MAX_TOOL_CALLS = 25
 logger = logging.getLogger(__name__)
 
 
-class _AppAwareCodeMode(CodeMode):
-    """CodeMode that also permits `execute` to dispatch identity-addressed (`<hash>_<name>`)
-    app backend tools when a gateway only routes `tools/list` names.
-
-    Bare app-only names remain excluded from `search`, `get_schema`, and `execute`.
-    """
-
-    @staticmethod
-    def _find_tool(name: str, tools: Sequence[Tool]) -> Tool | None:
-        found = CodeMode._find_tool(name, tools)
-        if found is not None:
-            return found
-        if parse_hashed_backend_name(name) is not None:
-            return Tool(name=name, parameters={"type": "object"})
-        return None
-
-
-def build_proxied_servers() -> list[tuple[str, Any]]:
+def build_proxied_servers() -> list[tuple[str, FastMCP]]:
     """Build proxies for Telnyx, REA, and founder's servers in src/mcp."""
-    proxies: list[tuple[str, Any]] = []
+    proxies: list[tuple[str, FastMCP]] = []
 
     # 1. Telnyx Remote MCP (FR-M2-3.1)
     telnyx_key = os.environ.get("TELNYX_API_KEY")
@@ -111,7 +92,6 @@ def build_proxied_servers() -> list[tuple[str, Any]]:
             "mcp-installer",
             "openapi-mcp",
             "strands_mcp_server",
-            "tools_mcp",
             "utcp",
         ]
         for sdir_name in server_dirs:
@@ -141,7 +121,7 @@ def build_operations(
     max_tool_calls: int | None = DEFAULT_MAX_TOOL_CALLS,
     mask_error_details: bool | None = None,
 ) -> FastMCP:
-    """All Strands tools and domain FastMCPApp workspaces, discoverable through CodeMode."""
+    """All Strands tools and domain FastMCPApp workspaces, discoverable through native CodeMode."""
     operations = FastMCP("Strands operations", mask_error_details=mask_error_details)
     register_catalog_on_operations(operations)
 
@@ -156,8 +136,8 @@ def build_operations(
         operations.add_provider(domain_app)
     register_task_tools(operations)
     operations.add_transform(
-        _AppAwareCodeMode(
-            discovery_tools=[GetTags(), Search(), GetSchemas()],
+        CodeMode(
+            discovery_tools=[GetTags(name="get_tags"), Search(), GetSchemas()],
             max_tool_calls=max_tool_calls,
         )
     )
@@ -166,16 +146,18 @@ def build_operations(
 
 def build_server(
     *,
+    auth: AuthProvider | None = None,
     tasks: TasksExtension | None = None,
     max_tool_calls: int | None = DEFAULT_MAX_TOOL_CALLS,
-    **fastmcp_kwargs: Any,
+    mask_error_details: bool | None = None,
 ) -> FastMCP:
     """Build the model-facing server: `search`, `get_schema`, `execute`, `generate_prefab_ui`."""
     prepare_prefab_sandbox_env()
     server = FastMCP(
         SERVER_NAME,
+        auth=auth,
         providers=[GenerativeUI()],
-        **fastmcp_kwargs,
+        mask_error_details=mask_error_details,
     )
 
     # Register root Money Approval Gate middleware (CAT-115)
@@ -194,7 +176,7 @@ def build_server(
     server.mount(
         build_operations(
             max_tool_calls=max_tool_calls,
-            mask_error_details=fastmcp_kwargs.get("mask_error_details"),
+            mask_error_details=mask_error_details,
         )
     )
     return server

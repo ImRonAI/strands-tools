@@ -1,3 +1,4 @@
+# pyright: strict
 """Strands CCXT workspace: Unified cryptocurrency exchange API via `use_ccxt`."""
 
 from fastmcp.apps.app import FastMCPApp
@@ -34,19 +35,19 @@ ccxt_tools_list = register_list_backend(
     app,
     name="ccxt_tools_list",
     spec=ListSpec(
-        tool="strands_my_catalog",
+        tool="search",
         data_path=("rows",),
         columns=COLUMNS,
         paging="none",
-        static_args={"action": "list_tools", "suite": "strands_ccxt"},
+        static_args={"query": "strands_ccxt"},
     ),
 )
 ccxt_tool_detail = register_detail_backend(
     app,
     name="ccxt_tool_detail",
-    tool="strands_my_catalog",
+    tool="search",
     id_param="query",
-    static_args={"action": "list_tools", "suite": "strands_ccxt"},
+    static_args={"query": "strands_ccxt"},
 )
 ccxt_query_run = register_form_backend(
     app, name="ccxt_query_run", tool="use_ccxt", model=CcxtQueryForm

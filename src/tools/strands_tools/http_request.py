@@ -32,7 +32,7 @@ import json
 import logging
 import os
 import time
-from typing import Any, Dict, Optional, Union
+from typing import Annotated, Any, Dict, Literal, Optional, Union
 from urllib.parse import urlparse
 
 import markdownify
@@ -44,10 +44,8 @@ from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
-from strands.types.tools import (
-    ToolResult,
-    ToolUse,
-)
+from strands import tool
+from strands.types.tools import ToolResult
 from typing_extensions import deprecated
 from urllib3 import Retry
 
@@ -86,152 +84,6 @@ class _SafeRedirectSession(requests.Session):
             prepared_request.headers.clear()
             prepared_request.headers.update(safe)
 
-
-TOOL_SPEC = {
-    "name": "http_request",
-    "description": (
-        "Make HTTP requests to any API with comprehensive authentication including Bearer tokens, Basic auth, "
-        "JWT, AWS SigV4, Digest auth, and enterprise authentication patterns. "
-        "Includes session management, metrics, "
-        "streaming support, cookie handling, redirect control, and optional HTML to markdown conversion."
-    ),
-    "inputSchema": {
-        "json": {
-            "type": "object",
-            "properties": {
-                "method": {
-                    "type": "string",
-                    "description": "HTTP method (GET, POST, PUT, DELETE, etc.)",
-                },
-                "url": {
-                    "type": "string",
-                    "description": "The URL to send the request to",
-                },
-                "auth_type": {
-                    "type": "string",
-                    "enum": [
-                        "Bearer",
-                        "token",
-                        "basic",
-                        "digest",
-                        "jwt",
-                        "aws_sig_v4",
-                        "kerberos",
-                        "custom",
-                        "api_key",
-                    ],
-                    "description": "Authentication type to use",
-                },
-                "auth_token": {
-                    "type": "string",
-                    "description": "Authentication token (if not provided, will check auth_env_var if configured)",
-                },
-                "auth_env_var": {
-                    "type": "string",
-                    "description": (
-                        "Name of an environment variable containing the auth token. "
-                        "The variable must be listed in HTTP_REQUEST_TOKEN_CONFIG "
-                        "with an allowed domain that matches the request URL."
-                    ),
-                },
-                "headers": {
-                    "type": "object",
-                    "description": "HTTP headers as key-value pairs",
-                },
-                "body": {
-                    "type": "string",
-                    "description": "Request body (for POST, PUT, etc.)",
-                },
-                "verify_ssl": {
-                    "type": "boolean",
-                    "description": "Whether to verify SSL certificates. Disabling may be restricted.",
-                },
-                "cookie": {
-                    "type": "string",
-                    "description": "Path to cookie file to use for the request",
-                },
-                "cookie_jar": {
-                    "type": "string",
-                    "description": "Path to cookie jar file to save cookies to",
-                },
-                "session_config": {
-                    "type": "object",
-                    "description": "Session configuration (cookies, keep-alive, etc)",
-                    "properties": {
-                        "keep_alive": {"type": "boolean"},
-                        "max_retries": {"type": "integer"},
-                        "pool_size": {"type": "integer"},
-                        "cookie_persistence": {"type": "boolean"},
-                    },
-                },
-                "metrics": {
-                    "type": "boolean",
-                    "description": "Whether to collect request metrics",
-                },
-                "streaming": {
-                    "type": "boolean",
-                    "description": "Enable streaming response handling",
-                },
-                "allow_redirects": {
-                    "type": "boolean",
-                    "description": "Whether to follow redirects (default: True)",
-                },
-                "max_redirects": {
-                    "type": "integer",
-                    "description": "Maximum number of redirects to follow (default: 30)",
-                },
-                "timeout": {
-                    "type": "number",
-                    "description": "Request timeout in seconds (default: 30). Use a large value for no timeout.",
-                },
-                "convert_to_markdown": {
-                    "type": "boolean",
-                    "description": "Convert HTML responses to markdown format (default: False).",
-                },
-                "aws_auth": {
-                    "type": "object",
-                    "description": "AWS auth configuration for SigV4",
-                    "properties": {
-                        "service": {"type": "string"},
-                        "region": {"type": "string"},
-                        "access_key": {"type": "string"},
-                        "secret_key": {"type": "string"},
-                        "session_token": {"type": "string"},
-                        "refresh_credentials": {"type": "boolean"},
-                    },
-                },
-                "basic_auth": {
-                    "type": "object",
-                    "description": "Basic auth credentials",
-                    "properties": {
-                        "username": {"type": "string"},
-                        "password": {"type": "string"},
-                    },
-                    "required": ["username", "password"],
-                },
-                "digest_auth": {
-                    "type": "object",
-                    "description": "Digest auth credentials",
-                    "properties": {
-                        "username": {"type": "string"},
-                        "password": {"type": "string"},
-                        "realm": {"type": "string"},
-                    },
-                },
-                "jwt_config": {
-                    "type": "object",
-                    "description": "JWT configuration",
-                    "properties": {
-                        "secret": {"type": "string"},
-                        "algorithm": {"type": "string"},
-                        "expiry": {"type": "integer"},
-                    },
-                },
-            },
-            "required": ["method", "url"],
-        }
-    },
-}
 
 # Session cache keyed by domain
 SESSION_CACHE = {}
@@ -616,120 +468,157 @@ def format_response_preview(
 # invocation path is suppressed by Python's default warning filter. The message is
 # spelled out here rather than passed as _DEPRECATION_MESSAGE because mypy only
 # reports @deprecated when the argument is a string literal.
+@tool
 @deprecated(
     "http_request is deprecated. This warning becomes an error log in v0.9.0. Migration path: use the "
     "http_request and web_fetch tools vended by strands-agents (from strands.vended_tools import http_request, "
     "web_fetch). http_request handles API calls; web_fetch retrieves and reads web pages."
 )
-def http_request(tool: ToolUse, **kwargs: Any) -> ToolResult:
+def http_request(
+    method: Annotated[str, "HTTP method (GET, POST, PUT, DELETE, etc.)"],
+    url: Annotated[str, "The URL to send the request to"],
+    auth_type: Annotated[
+        Optional[
+            Literal[
+                "Bearer",
+                "token",
+                "basic",
+                "digest",
+                "jwt",
+                "aws_sig_v4",
+                "kerberos",
+                "custom",
+                "api_key",
+            ]
+        ],
+        "Authentication type to use",
+    ] = None,
+    auth_token: Annotated[
+        Optional[str],
+        "Authentication token (if not provided, will check auth_env_var if configured)",
+    ] = None,
+    auth_env_var: Annotated[
+        Optional[str],
+        "Name of an environment variable containing the auth token. The variable must be listed in HTTP_REQUEST_TOKEN_CONFIG with an allowed domain that matches the request URL.",
+    ] = None,
+    headers: Annotated[
+        Optional[Dict[str, str]],
+        "HTTP headers as key-value pairs",
+    ] = None,
+    body: Annotated[
+        Optional[str],
+        "Request body (for POST, PUT, etc.)",
+    ] = None,
+    verify_ssl: Annotated[
+        Optional[bool],
+        "Whether to verify SSL certificates. Disabling may be restricted.",
+    ] = None,
+    cookie: Annotated[
+        Optional[str],
+        "Path to cookie file to use for the request",
+    ] = None,
+    cookie_jar: Annotated[
+        Optional[str],
+        "Path to cookie jar file to save cookies to",
+    ] = None,
+    session_config: Annotated[
+        Optional[Dict[str, Any]],
+        "Session configuration (cookies, keep-alive, etc)",
+    ] = None,
+    metrics: Annotated[
+        Optional[bool],
+        "Whether to collect request metrics",
+    ] = None,
+    streaming: Annotated[
+        Optional[bool],
+        "Enable streaming response handling",
+    ] = None,
+    allow_redirects: Annotated[
+        Optional[bool],
+        "Whether to follow redirects (default: True)",
+    ] = None,
+    max_redirects: Annotated[
+        Optional[int],
+        "Maximum number of redirects to follow (default: 30)",
+    ] = None,
+    timeout: Annotated[
+        Optional[float],
+        "Request timeout in seconds (default: 30). Use a large value for no timeout.",
+    ] = None,
+    convert_to_markdown: Annotated[
+        Optional[bool],
+        "Convert HTML responses to markdown format (default: False).",
+    ] = None,
+    aws_auth: Annotated[
+        Optional[Dict[str, Any]],
+        "AWS auth configuration for SigV4",
+    ] = None,
+    basic_auth: Annotated[
+        Optional[Dict[str, str]],
+        "Basic auth credentials ({'username': str, 'password': str})",
+    ] = None,
+    digest_auth: Annotated[
+        Optional[Dict[str, str]],
+        "Digest auth credentials ({'username': str, 'password': str, 'realm': str})",
+    ] = None,
+    jwt_config: Annotated[
+        Optional[Dict[str, Any]],
+        "JWT configuration ({'secret': str, 'algorithm': str, 'expiry': int})",
+    ] = None,
+) -> ToolResult:
     """
-    Execute HTTP request with comprehensive authentication and features.
-
-    Common API Examples:
-
-    1. GitHub API (uses "token" auth_type):
-        ```python
-        http_request(
-            method="GET",
-            url="https://api.github.com/user",
-            auth_type="token",
-            auth_token="<your-github-token>",
-        )
-        ```
-
-        Or with env var (requires HTTP_REQUEST_TOKEN_CONFIG["GITHUB_TOKEN"] = ["api.github.com"]):
-        ```python
-        http_request(
-            method="GET",
-            url="https://api.github.com/user",
-            auth_type="token",
-            auth_env_var="GITHUB_TOKEN",
-        )
-        ```
-
-    2. GitLab API (uses "Bearer" auth_type):
-        ```python
-        http_request(
-            method="GET",
-            url="https://gitlab.com/api/v4/user",
-            auth_type="Bearer",
-            auth_token="<your-gitlab-token>",
-        )
-        ```
-
-        Or with env var (requires HTTP_REQUEST_TOKEN_CONFIG["GITLAB_TOKEN"] = ["gitlab.com"]):
-        ```python
-        http_request(
-            method="GET",
-            url="https://gitlab.com/api/v4/user",
-            auth_type="Bearer",
-            auth_env_var="GITLAB_TOKEN",
-        )
-        ```
-
-    3. AWS S3 (uses "aws_sig_v4" auth_type):
-        ```python
-        http_request(
-            method="GET",
-            url="https://s3.amazonaws.com/my-bucket",
-            auth_type="aws_sig_v4",
-            aws_auth={"service": "s3"},
-        )
-        ```
-
-    4. Using cookies from file and saving to cookie jar:
-        ```python
-        http_request(
-            method="GET",
-            url="https://internal-site.amazon.com",
-            cookie="~/.midway/cookie",
-            cookie_jar="~/.midway/cookie.updated",
-        )
-        ```
-
-    5. Control redirect behavior:
-        ```python
-        http_request(
-            method="GET",
-            url="https://example.com/redirect",
-            allow_redirects=True,  # Default behavior
-            max_redirects=5,  # Limit number of redirects to follow
-        )
-        ```
-
-    6. Convert HTML responses to markdown:
-        ```python
-        http_request(
-            method="GET",
-            url="https://example.com/article",
-            convert_to_markdown=True,  # Converts HTML content to markdown
-        )
-        ```
-
-    Environment Variables:
-    - AWS credentials are automatically loaded from environment variables or credentials file
-    - Proxies are configured by the operator at process level via the standard
-      HTTP_PROXY / HTTPS_PROXY / NO_PROXY env vars (honored by `requests`), or by
-      setting `session.proxies` in code. Proxies are intentionally not part of the
-      LLM-controllable tool input.
-
-    Token Config:
-    - Use HTTP_REQUEST_TOKEN_CONFIG to allow specific env vars as auth tokens for permitted domains
+    Make HTTP requests to any API with comprehensive authentication including Bearer tokens, Basic auth,
+    JWT, AWS SigV4, Digest auth, and enterprise authentication patterns. Includes session management, metrics,
+    streaming support, cookie handling, redirect control, and optional HTML to markdown conversion.
     """
     logger.warning("DEPRECATION WARNING: %s", _DEPRECATION_MESSAGE)
 
     console = console_util.create()
 
     try:
-        # Extract input from tool use object or use directly if already a dict
-        tool_input = {}
         tool_use_id = "default_id"
-
-        if isinstance(tool, dict):
-            if "input" in tool:
-                tool_input = tool["input"]
-                tool_use_id = tool.get("toolUseId", "default_id")
-            # No else here - tool_input has already been initialized
+        tool_input: Dict[str, Any] = {
+            "method": method,
+            "url": url,
+        }
+        if auth_type is not None:
+            tool_input["auth_type"] = auth_type
+        if auth_token is not None:
+            tool_input["auth_token"] = auth_token
+        if auth_env_var is not None:
+            tool_input["auth_env_var"] = auth_env_var
+        if headers is not None:
+            tool_input["headers"] = dict(headers)
+        if body is not None:
+            tool_input["body"] = body
+        if verify_ssl is not None:
+            tool_input["verify_ssl"] = verify_ssl
+        if cookie is not None:
+            tool_input["cookie"] = cookie
+        if cookie_jar is not None:
+            tool_input["cookie_jar"] = cookie_jar
+        if session_config is not None:
+            tool_input["session_config"] = session_config
+        if metrics is not None:
+            tool_input["metrics"] = metrics
+        if streaming is not None:
+            tool_input["streaming"] = streaming
+        if allow_redirects is not None:
+            tool_input["allow_redirects"] = allow_redirects
+        if max_redirects is not None:
+            tool_input["max_redirects"] = max_redirects
+        if timeout is not None:
+            tool_input["timeout"] = timeout
+        if convert_to_markdown is not None:
+            tool_input["convert_to_markdown"] = convert_to_markdown
+        if aws_auth is not None:
+            tool_input["aws_auth"] = aws_auth
+        if basic_auth is not None:
+            tool_input["basic_auth"] = basic_auth
+        if digest_auth is not None:
+            tool_input["digest_auth"] = digest_auth
+        if jwt_config is not None:
+            tool_input["jwt_config"] = jwt_config
 
         method = tool_input["method"]
         url = tool_input["url"]

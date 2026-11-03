@@ -1,8 +1,10 @@
+# pyright: strict
 from strands_client.auth import bearer, file_token_storage, oauth
 from strands_client.catalog import (
     MODEL_VISIBLE_TOOLS,
     execute,
     get_schema,
+    get_tags,
     list_model_visible_tools,
     search,
 )
@@ -49,7 +51,7 @@ from strands_client.workspaces import (
 
 __all__ = [
     "DEFAULT_REA_DIR",
-    " LogRecorder",
+    "LogRecorder",
     "MODEL_VISIBLE_TOOLS",
     "NotificationRecorder",
     "OubliaiConnection",
@@ -77,6 +79,7 @@ __all__ = [
     "find_renderer_resource",
     "generate_ui",
     "get_schema",
+    "get_tags",
     "group",
     "group_from_mcp_config",
     "group_with_rea",

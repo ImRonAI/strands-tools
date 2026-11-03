@@ -1,3 +1,6 @@
+# pyright: strict
+from typing import Literal
+
 from fastmcp.client.client import CallToolResult
 from mcp.types import Tool
 
@@ -7,6 +10,7 @@ MODEL_VISIBLE_TOOLS = (
     "execute",
     "generate_prefab_ui",
     "get_schema",
+    "get_tags",
     "search",
 )
 
@@ -18,6 +22,13 @@ async def list_model_visible_tools(connection: StrandsConnection) -> list[Tool]:
         for name in MODEL_VISIBLE_TOOLS
         if name in tools_by_name
     ]
+
+
+async def get_tags(
+    connection: StrandsConnection,
+    detail: Literal["brief", "full"] = "brief",
+) -> CallToolResult:
+    return await connection.call_tool("get_tags", {"detail": detail})
 
 
 async def search(connection: StrandsConnection, query: str) -> CallToolResult:

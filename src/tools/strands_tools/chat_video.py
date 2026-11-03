@@ -40,12 +40,13 @@ import tempfile
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, Dict, cast
+from typing import Annotated, Any, Dict, Literal, cast
 
 import google.genai as genai
 from google.genai import errors as genai_errors
 from google.genai import types as genai_types
-from strands.types.tools import ToolResult, ToolSpec, ToolUse
+from strands import tool
+from strands.types.tools import ToolResult
 
 logger = logging.getLogger(__name__)
 
@@ -103,162 +104,6 @@ _CAPACITY_KEYWORDS: tuple[str, ...] = (
     "timed out",
     "timeout",
 )
-
-TOOL_SPEC: ToolSpec = {
-    "name": "chat_video",
-    "description": """Chat with and analyze video content from mobile phones, tablets, laptops, or URLs using the Google Gemini Interactions API (with optional TwelveLabs Pegasus fallback).
-
-Key Features:
-1. Multimodal Video & Audio Understanding:
-   - Natural language Q&A, summarization, timestamped event detection (`MM:SS`), OCR, action recognition, and audio/dialogue transcription
-   - Works across mobile/tablet camera uploads (`.mov`, `.mp4`, `.3gp`, `.webm`), desktop screen recordings, base64/data-URL captures, YouTube URLs, Cloud Storage (`gs://`), HTTPS URLs, and Gemini Files API (`files/...`)
-   - Supports multi-turn follow-up questions via `previous_interaction_id`
-
-2. Native Gemini Video Processing Controls:
-   - `processing`: `"static"` (default 1 FPS sampling, customizable with `start_offset`, `end_offset`, and `fps`) or `"agentic"` (dynamic timeline inspection for long videos)
-   - `resolution`: `"low"`, `"medium"`, `"high"`, or `"ultra_high"` frame token budget
-   - `engine_options`: `["visual", "audio"]` (default both, or focus on visual-only / audio-only)
-
-Usage Examples:
-1. Local video file (mobile `.mov`, `.mp4`, `.webm`, etc.):
-   chat_video(prompt="Summarize key events with MM:SS timestamps", video_path="/path/to/video.mp4")
-
-2. YouTube or remote video URL:
-   chat_video(prompt="What are the main arguments presented?", video_url="https://www.youtube.com/watch?v=9hE5-98ZeCg")
-
-3. Long-form video with agentic processing or custom clipping:
-   chat_video(
-       prompt="Find where the speaker demos the mobile app",
-       video_path="/path/to/lecture.mov",
-       processing="agentic",
-       resolution="high"
-   )
-
-4. Clipped segment with custom FPS:
-   chat_video(
-       prompt="Describe the rapid motion in this clip",
-       video_path="/path/to/sports.mp4",
-       start_offset="10s",
-       end_offset="25s",
-       fps=2.0
-   )
-
-5. Multi-turn follow-up question:
-   chat_video(prompt="What did they say right after that?", previous_interaction_id="interaction_abc123")""",
-    "inputSchema": {
-        "json": {
-            "type": "object",
-            "properties": {
-                "prompt": {
-                    "type": "string",
-                    "description": "Natural language question or instruction about the video",
-                },
-                "video_path": {
-                    "type": "string",
-                    "description": (
-                        "Local file path to a video (.mp4, .mov, .webm, .3gp, .m4v, .mpeg, .mpg, .avi, .wmv, .flv, .mkv)"
-                    ),
-                },
-                "video_url": {
-                    "type": "string",
-                    "description": (
-                        "YouTube URL (youtube.com/watch?v=..., youtu.be/..., youtube.com/shorts/...), "
-                        "HTTPS URL, gs:// URI, or Gemini Files API URI"
-                    ),
-                },
-                "video_base64": {
-                    "type": "string",
-                    "description": (
-                        "Base64-encoded video bytes or data URL (data:video/mp4;base64,...) from a mobile, "
-                        "tablet, or laptop camera/screen capture"
-                    ),
-                },
-                "video_id": {
-                    "type": "string",
-                    "description": (
-                        "Gemini Files API resource name (e.g. 'files/abc123') or an indexed TwelveLabs video ID"
-                    ),
-                },
-                "mime_type": {
-                    "type": "string",
-                    "description": (
-                        "Optional explicit video MIME type (e.g. 'video/mp4', 'video/mov', 'video/webm', 'video/3gpp'). "
-                        "Automatically inferred from file extension or data URL when omitted."
-                    ),
-                },
-                "processing": {
-                    "type": "string",
-                    "enum": ["static", "agentic"],
-                    "description": (
-                        "Gemini video processing mode: 'static' (default frame + audio sampling, supports "
-                        "start_offset/end_offset/fps) or 'agentic' (dynamic timeline navigation for long videos)"
-                    ),
-                },
-                "resolution": {
-                    "type": "string",
-                    "enum": ["low", "medium", "high", "ultra_high"],
-                    "description": "Per-frame token resolution ('low', 'medium', 'high', or 'ultra_high')",
-                },
-                "start_offset": {
-                    "type": "string",
-                    "description": "Optional clip start offset in seconds with 's' suffix (e.g. '10s' or '12.5s')",
-                },
-                "end_offset": {
-                    "type": "string",
-                    "description": "Optional clip end offset in seconds with 's' suffix (e.g. '60s')",
-                },
-                "fps": {
-                    "type": "number",
-                    "description": "Optional custom frame-rate sampling density in frames per second (e.g. 0.5, 1.0, 2.0)",
-                    "minimum": 0.01,
-                    "maximum": 24.0,
-                },
-                "previous_interaction_id": {
-                    "type": "string",
-                    "description": "Optional Gemini interaction ID from a previous turn for multi-turn video chat",
-                },
-                "model": {
-                    "type": "string",
-                    "description": (
-                        "Optional Gemini model ID (defaults to 'gemini-3.8-flash' with automatic failover to "
-                        "'gemini-4-argon' and 'gemini-3.5-flash-lite')"
-                    ),
-                },
-                "system_instruction": {
-                    "type": "string",
-                    "description": "Optional system instruction to guide video analysis format and persona",
-                },
-                "temperature": {
-                    "type": "number",
-                    "description": "Controls randomness in responses (0.0-2.0). Default: 0.7",
-                    "minimum": 0.0,
-                    "maximum": 2.0,
-                },
-                "max_output_tokens": {
-                    "type": "integer",
-                    "description": "Optional maximum number of output tokens to generate",
-                    "minimum": 1,
-                },
-                "engine_options": {
-                    "type": "array",
-                    "items": {
-                        "type": "string",
-                        "enum": ["visual", "audio"],
-                    },
-                    "description": "Analysis modes to use. Default: ['visual', 'audio']",
-                },
-                "index_id": {
-                    "type": "string",
-                    "description": (
-                        "Optional TwelveLabs index ID when using TwelveLabs Pegasus fallback "
-                        "(or set TWELVELABS_PEGASUS_INDEX_ID env var)"
-                    ),
-                },
-            },
-            "required": ["prompt"],
-        }
-    },
-}
 
 # Cache for uploaded videos (SHA-256 -> Gemini file URI or TwelveLabs video_id) to avoid re-uploading
 VIDEO_CACHE: Dict[str, str] = {}
@@ -762,24 +607,105 @@ def _apply_engine_options_to_prompt(prompt: str, engine_options: Sequence[str]) 
     return prompt
 
 
-def chat_video(tool: ToolUse, **kwargs: Any) -> ToolResult:
+@tool
+def chat_video(
+    prompt: Annotated[str, "Natural language question or instruction about the video"],
+    video_path: Annotated[
+        str | None,
+        "Local file path to a video (.mp4, .mov, .webm, .3gp, .m4v, .mpeg, .mpg, .avi, .wmv, .flv, .mkv)",
+    ] = None,
+    video_url: Annotated[
+        str | None,
+        "YouTube URL (youtube.com/watch?v=..., youtu.be/..., youtube.com/shorts/...), HTTPS URL, gs:// URI, or Gemini Files API URI",
+    ] = None,
+    video_base64: Annotated[
+        str | None,
+        "Base64-encoded video bytes or data URL (data:video/mp4;base64,...) from a mobile, tablet, or laptop camera/screen capture",
+    ] = None,
+    video_id: Annotated[
+        str | None,
+        "Gemini Files API resource name (e.g. 'files/abc123') or an indexed TwelveLabs video ID",
+    ] = None,
+    mime_type: Annotated[
+        str | None,
+        "Optional explicit video MIME type (e.g. 'video/mp4', 'video/mov', 'video/webm', 'video/3gpp'). Automatically inferred from file extension or data URL when omitted.",
+    ] = None,
+    processing: Annotated[
+        Literal["static", "agentic"] | None,
+        "Gemini video processing mode: 'static' (default frame + audio sampling, supports start_offset/end_offset/fps) or 'agentic' (dynamic timeline navigation for long videos)",
+    ] = None,
+    resolution: Annotated[
+        Literal["low", "medium", "high", "ultra_high"] | None,
+        "Per-frame token resolution ('low', 'medium', 'high', or 'ultra_high')",
+    ] = None,
+    start_offset: Annotated[
+        str | None,
+        "Optional clip start offset in seconds with 's' suffix (e.g. '10s' or '12.5s')",
+    ] = None,
+    end_offset: Annotated[
+        str | None,
+        "Optional clip end offset in seconds with 's' suffix (e.g. '60s')",
+    ] = None,
+    fps: Annotated[
+        float | None,
+        "Optional custom frame-rate sampling density in frames per second (e.g. 0.5, 1.0, 2.0)",
+    ] = None,
+    previous_interaction_id: Annotated[
+        str | None,
+        "Optional Gemini interaction ID from a previous turn for multi-turn video chat",
+    ] = None,
+    model: Annotated[
+        str | None,
+        "Optional Gemini model ID (defaults to 'gemini-3.8-flash' with automatic failover to 'gemini-4-argon' and 'gemini-3.5-flash-lite')",
+    ] = None,
+    system_instruction: Annotated[
+        str | None,
+        "Optional system instruction to guide video analysis format and persona",
+    ] = None,
+    temperature: Annotated[
+        float,
+        "Controls randomness in responses (0.0-2.0). Default: 0.7",
+    ] = 0.7,
+    max_output_tokens: Annotated[
+        int | None,
+        "Optional maximum number of output tokens to generate",
+    ] = None,
+    engine_options: Annotated[
+        list[Literal["visual", "audio"]] | None,
+        "Analysis modes to use. Default: ['visual', 'audio']",
+    ] = None,
+    index_id: Annotated[
+        str | None,
+        "Optional TwelveLabs index ID when using TwelveLabs Pegasus fallback (or set TWELVELABS_PEGASUS_INDEX_ID env var)",
+    ] = None,
+) -> ToolResult:
     """Chat with video content using the Google Gemini Interactions API (or TwelveLabs fallback).
 
     Supports local video files (`.mp4`, `.mov`, `.webm`, `.3gp`, etc.), YouTube/HTTPS/`gs://` URLs,
     base64/data-URL captures from mobile/tablet/laptop devices, Gemini Files API URIs (`files/...`),
     and multi-turn follow-ups via `previous_interaction_id`.
-
-    Args:
-        tool: Tool use dictionary containing `toolUseId` and `input` parameters.
-        **kwargs: Additional keyword arguments passed by the framework.
-
-    Returns:
-        Strands `ToolResult` dictionary with `toolUseId`, `status`, and `content`.
     """
-    del kwargs
-    tool_use_id = str(tool.get("toolUseId", "tooluse_chat_video"))
-    raw_input = tool.get("input")
-    tool_input: Mapping[str, Any] = cast(Mapping[str, Any], raw_input) if isinstance(raw_input, Mapping) else {}
+    tool_use_id = "tooluse_chat_video"
+    tool_input: Mapping[str, Any] = {
+        "prompt": prompt,
+        "video_path": video_path,
+        "video_url": video_url,
+        "video_base64": video_base64,
+        "video_id": video_id,
+        "mime_type": mime_type,
+        "processing": processing,
+        "resolution": resolution,
+        "start_offset": start_offset,
+        "end_offset": end_offset,
+        "fps": fps,
+        "previous_interaction_id": previous_interaction_id,
+        "model": model,
+        "system_instruction": system_instruction,
+        "temperature": temperature,
+        "max_output_tokens": max_output_tokens,
+        "engine_options": engine_options,
+        "index_id": index_id,
+    }
 
     try:
         prompt_raw = tool_input.get("prompt")

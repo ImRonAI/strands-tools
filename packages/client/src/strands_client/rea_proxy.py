@@ -1,3 +1,4 @@
+# pyright: strict
 """Client-side proxy for the non-Strands REA MCP server (https://github.com/morluto/rea).
 
 Provides:
@@ -11,11 +12,12 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+
+from typing import cast
 
 from fastmcp import Client, FastMCP
 from fastmcp.client.client import CallToolResult
-from fastmcp.client.transports import StdioTransport
+from fastmcp.client.transports import ClientTransport, StdioTransport
 from fastmcp.server import create_proxy
 from mcp.types import Tool
 
@@ -42,16 +44,17 @@ def create_rea_client(rea_dir: str | Path | None = None, *, name: str = "rea") -
 
 
 def create_rea_proxy(
-    target: Client[Any] | StdioTransport | str | Path | None = None,
+    target: Client[StdioTransport] | Client[ClientTransport] | StdioTransport | str | Path | None = None,
     *,
     name: str = "REA Reverse Engineering Proxy",
 ) -> FastMCP:
     """Create a FastMCP proxy server (`fastmcp.server.create_proxy`) over the REA MCP server."""
     if target is None or isinstance(target, (str, Path)):
-        proxy_target: Any = create_rea_client(target)
-    else:
-        proxy_target = target
-    return create_proxy(proxy_target, name=name)
+        proxy_client = cast(Client[ClientTransport], create_rea_client(target))
+        return create_proxy(proxy_client, name=name)
+    if isinstance(target, StdioTransport):
+        return create_proxy(target, name=name)
+    return create_proxy(cast(Client[ClientTransport], target), name=name)
 
 
 async def list_rea_tools(rea_dir: str | Path | None = None) -> list[Tool]:
@@ -64,7 +67,7 @@ async def list_rea_tools(rea_dir: str | Path | None = None) -> list[Tool]:
 
 async def call_rea_tool(
     tool_name: str,
-    arguments: dict[str, Any] | None = None,
+    arguments: dict[str, object] | None = None,
     *,
     rea_dir: str | Path | None = None,
 ) -> CallToolResult:

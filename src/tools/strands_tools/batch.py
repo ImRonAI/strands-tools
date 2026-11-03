@@ -33,9 +33,9 @@ Example usage:
 
 import logging
 import traceback
+from typing import Annotated, Any
 
-from strands.types.tools import ToolResult, ToolUse
-from typing_extensions import deprecated
+from strands import tool
 
 from strands_tools.utils import console_util
 
@@ -48,78 +48,27 @@ _DEPRECATION_MESSAGE = (
 )
 
 
-TOOL_SPEC = {
-    "name": "batch",
-    "description": "Invoke multiple other tool calls in sequence from one request",
-    "inputSchema": {
-        "json": {
-            "type": "object",
-            "properties": {
-                "invocations": {
-                    "type": "array",
-                    "description": "The tool calls to invoke",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string", "description": "The name of the tool to invoke"},
-                            "arguments": {"type": "object", "description": "The arguments to the tool"},
-                        },
-                        "required": ["name", "arguments"],
-                    },
-                }
-            },
-            "required": ["invocations"],
-        }
-    },
-}
-
-
-# @deprecated surfaces in IDEs and type checkers; the logger.warning below is what
-# users actually see, since DeprecationWarning raised from inside the SDK's tool
-# invocation path is suppressed by Python's default warning filter. The message is
-# spelled out here rather than passed as _DEPRECATION_MESSAGE because mypy only
-# reports @deprecated when the argument is a string literal.
-@deprecated(
-    "batch is deprecated. This warning becomes an error log in v0.9.0. Concurrent tool execution is now the default "
-    "in the SDK via ConcurrentToolExecutor, so no replacement tool is needed - remove batch and call tools normally. "
-    "See https://strandsagents.com/docs/user-guide/concepts/tools/executors/"
-)
-def batch(tool: ToolUse, **kwargs) -> ToolResult:
-    """
-    Batch tool for invoking multiple tools from one request, in sequence.
+@tool
+def batch(
+    invocations: Annotated[
+        list[dict[str, Any]],
+        "The tool calls to invoke, each with 'name' (str) and 'arguments' (dict)",
+    ],
+    agent: Any = None,
+) -> dict[str, Any]:
+    """Invoke multiple other tool calls in sequence from one request.
 
     Args:
-        tool: Tool use object.
-        **kwargs: Additional arguments passed by the framework, including 'agent' and 'invocations'.
+        invocations: List of tool invocation dictionaries, each containing 'name' and 'arguments'.
+        agent: Parent agent (automatically provided by Strands framework).
 
     Returns:
-        ToolResult with toolUseId, status and a list of results for each invocation.
-
-    Notes:
-        - Each invocation should specify the tool name and its arguments.
-        - The tool will attempt to call each specified tool function with the provided arguments.
-        - If a tool function is not found or an error occurs, it will be captured in the results.
-        - This tool is designed to work with agents that support dynamic tool invocation.
-
-    Sample output:
-        {
-            "status": "success",
-            "results": [
-                {"name": "http_request", "status": "success", "result": {...}},
-                {"name": "use_aws", "status": "error", "error": "...", "traceback": "..."},
-                ...
-            ]
-        }
+        Dictionary with status and results for each invocation.
     """
     logger.warning("DEPRECATION WARNING: %s", _DEPRECATION_MESSAGE)
 
     console = console_util.create()
-    tool_use_id = tool["toolUseId"]
-
-    # Retrieve 'agent' and 'invocations' from kwargs
-    agent = kwargs.get("agent")
-    invocations = tool.get("input", {}).get("invocations", [])
-    results = []
+    results: list[dict[str, Any]] = []
 
     try:
         if not hasattr(agent, "tool") or agent.tool is None:
@@ -128,7 +77,7 @@ def batch(tool: ToolUse, **kwargs) -> ToolResult:
         for invocation in invocations:
             tool_name = invocation.get("name")
             arguments = invocation.get("arguments", {})
-            tool_fn = getattr(agent.tool, tool_name, None)
+            tool_fn = getattr(agent.tool, str(tool_name), None)
 
             if callable(tool_fn):
                 try:
@@ -170,7 +119,6 @@ def batch(tool: ToolUse, **kwargs) -> ToolResult:
         summary_text = "\n".join(summary_lines)
 
         return {
-            "toolUseId": tool_use_id,
             "status": "success",
             "content": [
                 {"text": summary_text},
@@ -191,7 +139,6 @@ def batch(tool: ToolUse, **kwargs) -> ToolResult:
         error_msg = f"Error in batch tool: {str(e)}\n{traceback.format_exc()}"
         console.print(f"Error in batch tool: {str(e)}")
         return {
-            "toolUseId": tool_use_id,
             "status": "error",
             "content": [{"text": error_msg}],
         }

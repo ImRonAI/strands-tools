@@ -1,3 +1,4 @@
+# pyright: strict
 """Strands Pack YouTube workspace: YouTube Data API, Analytics, Read/Write, and Transcripts."""
 
 from fastmcp.apps.app import FastMCPApp
@@ -36,19 +37,19 @@ youtube_tools_list = register_list_backend(
     app,
     name="youtube_tools_list",
     spec=ListSpec(
-        tool="strands_my_catalog",
+        tool="search",
         data_path=("rows",),
         columns=COLUMNS,
         paging="none",
-        static_args={"action": "list_tools", "suite": "youtube"},
+        static_args={"query": "youtube"},
     ),
 )
 youtube_tool_detail = register_detail_backend(
     app,
     name="youtube_tool_detail",
-    tool="strands_my_catalog",
+    tool="search",
     id_param="query",
-    static_args={"action": "list_tools", "suite": "youtube"},
+    static_args={"query": "youtube"},
 )
 youtube_transcript_run = register_form_backend(
     app, name="youtube_transcript_run", tool="youtube_transcript", model=YouTubeTranscriptForm

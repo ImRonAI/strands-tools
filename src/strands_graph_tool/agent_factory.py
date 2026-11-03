@@ -17,22 +17,69 @@ Grounded in:
 
 from __future__ import annotations
 
+import importlib
 import json
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Literal, TypeGuard, cast
 
-from strands import Agent
-from strands.models import ModelRouter
+from pydantic import BaseModel
+from strands import Agent, tool
+from strands.models import Model, ModelRouter
 from strands.models.gemini_interactions import GeminiInteractionsModel
 from strands.multiagent.spec import Preset
-from strands.tools.decorator import tool  # pyright: ignore[reportUnknownVariableType]
 from strands_harness import defaults as harness_defaults
 from strands_harness.models import build_gemini_fallback_router, resolve_model
 from strands_harness.types.agent import Effort
 
+ConfigDict = dict[str, object]
+ConfigMapping = Mapping[str, object]
+GeminiToolSpec = str | Mapping[str, object] | BaseModel
+ModelFactory = Callable[[], Model | ModelRouter | object]
+
+
+def is_config_mapping(val: object) -> TypeGuard[ConfigMapping]:
+    """Narrow an arbitrary object to `Mapping[str, object]`."""
+    return isinstance(val, Mapping)
+
+
+def is_object_sequence(val: object) -> TypeGuard[Sequence[object]]:
+    """Narrow an arbitrary object to a non-string `Sequence[object]`."""
+    return isinstance(val, Sequence) and not isinstance(val, (str, bytes))
+
+
+def coerce_gemini_tools(raw: object) -> list[GeminiToolSpec] | None:
+    """Coerce a raw gemini_tools sequence into a typed `list[GeminiToolSpec]`."""
+    if not is_object_sequence(raw):
+        return None
+    result: list[GeminiToolSpec] = []
+    for item in raw:
+        if isinstance(item, (str, BaseModel)):
+            result.append(item)
+        elif is_config_mapping(item):
+            result.append(dict(item))
+    return result
+
 # Registered named JSON/dict agent configurations for reuse across tools and formations
-_REGISTERED_AGENT_CONFIGS: dict[str, tuple[dict[str, Any], Path | None]] = {}
+_REGISTERED_AGENT_CONFIGS: dict[str, tuple[ConfigDict, Path | None]] = {}
+_FACTORY_TOOL_REGISTRY: dict[str, object] = {}
+
+
+def register_factory_tools(tools: Mapping[str, object]) -> None:
+    """Register tool objects by name for resolution in `agent_from_config` and `graph` nodes."""
+    for name, tool_obj in tools.items():
+        _FACTORY_TOOL_REGISTRY[str(name)] = tool_obj
+    try:
+        from agentskills.tool.agent_skill import register_available_tools
+
+        register_available_tools(dict(tools))
+    except Exception:
+        pass
+
+
+def get_factory_tool(name: str) -> object | None:
+    """Return a registered tool object by name if present."""
+    return _FACTORY_TOOL_REGISTRY.get(name.strip())
 
 _HARNESS_SPECIFIC_KEYS: frozenset[str] = frozenset(
     {
@@ -64,10 +111,10 @@ _HARNESS_SPECIFIC_KEYS: frozenset[str] = frozenset(
 
 def register_agent_config(
     name: str,
-    config: str | Path | Mapping[str, Any],
+    config: str | Path | ConfigMapping,
     *,
     base_path: Path | None = None,
-) -> dict[str, Any]:
+) -> ConfigDict:
     """Register a named JSON/dict agent configuration for use in subagents and multi-agent formations."""
     key = name.strip()
     if not key:
@@ -78,7 +125,7 @@ def register_agent_config(
     return dict(cfg_dict)
 
 
-def get_agent_config(name: str) -> dict[str, Any] | None:
+def get_agent_config(name: str) -> ConfigDict | None:
     """Retrieve a copy of a registered agent configuration by name."""
     entry = _REGISTERED_AGENT_CONFIGS.get(name.strip())
     if entry is None:
@@ -86,7 +133,7 @@ def get_agent_config(name: str) -> dict[str, Any] | None:
     return dict(entry[0])
 
 
-def list_agent_configs() -> dict[str, dict[str, Any]]:
+def list_agent_configs() -> dict[str, ConfigDict]:
     """Return a mapping of all registered agent configuration names to their config dicts."""
     return {k: dict(v[0]) for k, v in _REGISTERED_AGENT_CONFIGS.items()}
 
@@ -97,20 +144,20 @@ def clear_agent_configs() -> None:
 
 
 def load_agent_config_dict(
-    config: str | Path | Mapping[str, Any],
+    config: str | Path | ConfigMapping,
     *,
     base_path: Path | None = None,
-) -> tuple[dict[str, Any], Path | None]:
+) -> tuple[ConfigDict, Path | None]:
     """Load an agent configuration dictionary from a dict, JSON string, JSON file path, or registered name."""
     if isinstance(config, Mapping):
-        return dict(config), base_path
+        return {str(k): v for k, v in config.items()}, base_path
 
     if isinstance(config, Path):
         resolved_path = config.expanduser().resolve()
-        raw = json.loads(resolved_path.read_text(encoding="utf-8"))
-        if not isinstance(raw, dict):
+        raw: object = json.loads(resolved_path.read_text(encoding="utf-8"))
+        if not is_config_mapping(raw):
             raise ValueError(f"Agent config file '{resolved_path}' must contain a JSON object.")
-        return dict(cast(dict[str, Any], raw)), resolved_path.parent
+        return {str(k): v for k, v in raw.items()}, resolved_path.parent
 
     text = config.strip()
     if not text:
@@ -123,10 +170,10 @@ def load_agent_config_dict(
 
     # 2. Check inline JSON object string
     if text.startswith("{") and text.endswith("}"):
-        parsed = json.loads(text)
-        if not isinstance(parsed, dict):
+        parsed: object = json.loads(text)
+        if not is_config_mapping(parsed):
             raise ValueError("Inline JSON agent config must decode to a JSON object.")
-        return dict(cast(dict[str, Any], parsed)), base_path
+        return {str(k): v for k, v in parsed.items()}, base_path
 
     # 3. Load from filesystem path
     candidate = Path(text).expanduser()
@@ -139,29 +186,38 @@ def load_agent_config_dict(
         raise FileNotFoundError(
             f"Agent config '{text}' is neither a registered config name nor an existing JSON file ({candidate})."
         )
-    loaded = json.loads(candidate.read_text(encoding="utf-8"))
-    if not isinstance(loaded, dict):
+    loaded: object = json.loads(candidate.read_text(encoding="utf-8"))
+    if not is_config_mapping(loaded):
         raise ValueError(f"Agent config file '{candidate}' must contain a JSON object.")
-    return dict(cast(dict[str, Any], loaded)), candidate.parent
+    return {str(k): v for k, v in loaded.items()}, candidate.parent
 
 
 def _resolve_single_tool(
-    item: Any,
+    item: object,
     *,
     parent_agent: Agent | None = None,
     base_path: Path | None = None,
-) -> Any | None:
+) -> object | None:
     """Resolve a single tool specification (object, name, module:attr, path, or nested subagent config)."""
     if item is None:
         return None
 
     # Nested subagent config dict -> build subagent tool via Agent.as_tool()
-    if isinstance(item, Mapping):
-        item_map = cast(Mapping[str, Any], item)
-        nested_cfg = item_map.get("config") or item_map.get("config_path") or item_map.get("config_name") or item_map
-        tool_name = item_map.get("tool_name") or item_map.get("name")
-        tool_desc = item_map.get("description")
-        preserve_ctx = bool(item_map.get("preserve_context", False))
+    if is_config_mapping(item):
+        nested_raw = (
+            item.get("config")
+            or item.get("config_path")
+            or item.get("config_name")
+            or item
+        )
+        nested_cfg: str | Path | ConfigMapping = (
+            nested_raw
+            if isinstance(nested_raw, (str, Path)) or is_config_mapping(nested_raw)
+            else item
+        )
+        tool_name = item.get("tool_name") or item.get("name")
+        tool_desc = item.get("description")
+        preserve_ctx = bool(item.get("preserve_context", False))
         return build_subagent_tool_from_config(
             nested_cfg,
             parent_agent=parent_agent,
@@ -180,21 +236,24 @@ def _resolve_single_tool(
 
     # 1. Check parent_agent's tool_registry
     if parent_agent is not None:
-        registry_obj = getattr(parent_agent, "tool_registry", None)
-        reg_map = getattr(registry_obj, "registry", None)
-        if isinstance(reg_map, Mapping):
-            typed_reg = cast(Mapping[str, Any], reg_map)
-            if name in typed_reg:
-                return typed_reg[name]
+        registry_obj: object = getattr(parent_agent, "tool_registry", None)
+        reg_map: object = getattr(registry_obj, "registry", None)
+        if is_config_mapping(reg_map):
+            if name in reg_map:
+                return reg_map[name]
 
-    # 2. Check global AgentSkills / catalog tool registry (contains `use_skill`, `skill`, and 214+ Strands tools)
-    try:
-        from agentskills.tool.agent_skill import _GLOBAL_TOOL_REGISTRY  # pyright: ignore[reportPrivateUsage]
+    # 2. Ensure default skills/use_skill are registered if needed, then check AgentSkills tool registry
+    if name == "use_skill":
+        try:
+            from .graph import ensure_default_skills_configured
 
-        if name in _GLOBAL_TOOL_REGISTRY:
-            return _GLOBAL_TOOL_REGISTRY[name]
-    except Exception:
-        pass
+            ensure_default_skills_configured()
+        except Exception:
+            pass
+
+    found_tool = get_factory_tool(name)
+    if found_tool is not None:
+        return found_tool
 
     # 3. Check registered subagent configs by name
     if name in _REGISTERED_AGENT_CONFIGS:
@@ -208,25 +267,30 @@ def _resolve_single_tool(
     if name.startswith("strands_tools:"):
         short_name = name.split(":", 1)[1].strip()
         try:
-            import importlib
-
             mod = importlib.import_module(f"strands_tools.{short_name}")
             return getattr(mod, short_name, mod)
         except Exception:
             pass
 
-    # 5. Check module:attr reference
+    # 5. Check direct module in strands_tools.<name>
+    try:
+        mod = importlib.import_module(f"strands_tools.{name}")
+        candidate_attr: object = getattr(mod, name, None)
+        if candidate_attr is not None:
+            return candidate_attr
+    except Exception:
+        pass
+
+    # 6. Check module:attr reference
     if ":" in name and not Path(name).exists():
         mod_name, attr_name = name.split(":", 1)
         try:
-            import importlib
-
             mod = importlib.import_module(mod_name.strip())
             return getattr(mod, attr_name.strip())
         except Exception:
             pass
 
-    # 6. Check Python file path
+    # 7. Check Python file path
     candidate = Path(name).expanduser()
     if not candidate.is_absolute() and base_path is not None:
         candidate = (base_path / candidate).resolve()
@@ -240,13 +304,13 @@ def _resolve_single_tool(
 
 
 def _resolve_gemini_or_configured_model(
-    cfg_dict: Mapping[str, Any],
+    cfg_dict: ConfigMapping,
     *,
     parent_agent: Agent | None,
-    model_factories: Mapping[str, Callable[[], Any]] | None,
-    gemini_tools: Sequence[Any] | None,
+    model_factories: Mapping[str, ModelFactory] | None,
+    gemini_tools: Sequence[GeminiToolSpec] | None,
     effort: Effort,
-) -> Any:
+) -> object:
     """Resolve the model for an agent configuration, defaulting to the Gemini failover ModelRouter."""
     model_id_key = cfg_dict.get("model_id")
     if isinstance(model_id_key, str) and model_id_key.strip():
@@ -285,16 +349,21 @@ def _resolve_gemini_or_configured_model(
                     gemini_tools=gemini_tools,
                 )
             return m_str
-        if isinstance(raw_model, Mapping):
-            model_map = cast(Mapping[str, Any], raw_model)
-            nested_id = str(model_map.get("model_id") or model_map.get("model") or "gemini-4-argon")
+        if is_config_mapping(raw_model):
+            nested_id = str(raw_model.get("model_id") or raw_model.get("model") or "gemini-4-argon")
             clean_id = nested_id.split("/", 1)[1] if "/" in nested_id else nested_id
-            nested_tools = model_map.get("gemini_tools") or gemini_tools
-            nested_params = model_map.get("params")
+            nested_tools = coerce_gemini_tools(raw_model.get("gemini_tools")) or (
+                list(gemini_tools) if gemini_tools is not None else None
+            )
+            nested_params = raw_model.get("params")
             return GeminiInteractionsModel(
                 model_id=clean_id,
-                params=dict(cast(Mapping[str, Any], nested_params)) if isinstance(nested_params, Mapping) else None,
-                gemini_tools=cast(Sequence[Any], nested_tools) if isinstance(nested_tools, Sequence) else None,
+                params=(
+                    {str(k): v for k, v in nested_params.items()}
+                    if is_config_mapping(nested_params)
+                    else None
+                ),
+                gemini_tools=nested_tools,
             )
         return raw_model
 
@@ -308,26 +377,26 @@ def _resolve_gemini_or_configured_model(
 
 
 def resolve_agent_tools(
-    raw_tools: Sequence[Any] | None,
+    raw_tools: Sequence[object] | None,
     *,
     parent_agent: Agent | None = None,
     base_path: Path | None = None,
     use_skill: bool = False,
-    subagents: Sequence[Any] | None = None,
+    subagents: Sequence[object] | None = None,
     for_swarm: bool = False,
-) -> list[Any]:
+) -> list[object]:
     """Resolve and deduplicate a list of tools (including `use_skill` and nested JSON/dict subagents)."""
-    items: list[Any] = list(raw_tools or [])
+    items: list[object] = list(raw_tools or [])
     if use_skill:
         items.append("use_skill")
     if subagents:
         for sub in subagents:
-            if isinstance(sub, Mapping):
+            if is_config_mapping(sub):
                 items.append(sub)
             else:
                 items.append({"config": sub})
 
-    resolved: list[Any] = []
+    resolved: list[object] = []
     seen_keys: set[str] = set()
     for item in items:
         tool_obj = _resolve_single_tool(item, parent_agent=parent_agent, base_path=base_path)
@@ -347,32 +416,35 @@ def _tool_display_name(item: object) -> str:
     return str(getattr(item, "tool_name", getattr(item, "__name__", str(item))))
 
 
-def _detect_engine(cfg: Mapping[str, Any], engine: Literal["auto", "harness", "sdk"]) -> Literal["harness", "sdk"]:
+def _detect_engine(
+    cfg: ConfigMapping,
+    engine: Literal["auto", "harness", "sdk"],
+) -> Literal["harness", "sdk"]:
     if engine in ("harness", "sdk"):
         return engine
     cfg_engine = cfg.get("engine")
-    if cfg_engine == "harness":
+    if cfg_engine in ("harness", "create_harness"):
         return "harness"
     if cfg_engine == "sdk":
         return "sdk"
     if any(k in cfg for k in _HARNESS_SPECIFIC_KEYS):
         return "harness"
-    if isinstance(cfg.get("model"), Mapping):
+    if is_config_mapping(cfg.get("model")):
         return "harness"
     return "sdk"
 
 
 def build_agent_from_config(
-    config: str | Path | Mapping[str, Any],
+    config: str | Path | ConfigMapping,
     *,
     parent_agent: Agent | None = None,
     engine: Literal["auto", "harness", "sdk"] = "auto",
     session: bool = False,
-    extra_tools: Sequence[Any] | None = None,
+    extra_tools: Sequence[object] | None = None,
     for_swarm: bool = False,
-    model_factories: Mapping[str, Callable[[], Any]] | None = None,
+    model_factories: Mapping[str, ModelFactory] | None = None,
     base_path: Path | None = None,
-    **overrides: Any,
+    **overrides: object,
 ) -> Agent:
     """Build a fresh Strands `Agent` from a JSON file path, JSON string, Python dict, or registered config name.
 
@@ -386,11 +458,21 @@ def build_agent_from_config(
     if overrides:
         cfg_dict.update(overrides)
 
+    effective_factories = model_factories
+    if effective_factories is None:
+        try:
+            from .graph import get_model_factories
+
+            effective_factories = get_model_factories()
+        except Exception:
+            effective_factories = None
+
     chosen_engine = _detect_engine(cfg_dict, engine)
 
     node_name = str(cfg_dict.get("id") or cfg_dict.get("name") or "configured_agent")
     system_prompt = str(
         cfg_dict.get("system_prompt")
+        or cfg_dict.get("instructions")
         or cfg_dict.get("prompt")
         or cfg_dict.get("description")
         or cfg_dict.get("goal")
@@ -402,37 +484,36 @@ def build_agent_from_config(
         or (system_prompt.splitlines()[0][:200] if system_prompt else f"Specialized agent {node_name}")
     )
 
-    # Combine configured tools + extra_tools
-    combined_raw_tools: list[Any] = list(cfg_dict.get("tools") or [])
+    raw_cfg_tools = cfg_dict.get("tools")
+    combined_raw_tools: list[object] = list(raw_cfg_tools) if is_object_sequence(raw_cfg_tools) else []
     if extra_tools:
         combined_raw_tools.extend(extra_tools)
+
+    raw_subagents = cfg_dict.get("subagents")
+    subagents_seq: Sequence[object] | None = raw_subagents if is_object_sequence(raw_subagents) else None
 
     resolved_tools = resolve_agent_tools(
         combined_raw_tools,
         parent_agent=parent_agent,
         base_path=resolved_base,
         use_skill=bool(cfg_dict.get("use_skill", False)),
-        subagents=cfg_dict.get("subagents"),
+        subagents=subagents_seq,
         for_swarm=for_swarm,
     )
 
     raw_gemini_tools = cfg_dict.get("gemini_tools") or cfg_dict.get("geminiTools")
-    gemini_tools: Sequence[Any] | None = (
-        cast(Sequence[Any], raw_gemini_tools)
-        if isinstance(raw_gemini_tools, Sequence) and not isinstance(raw_gemini_tools, (str, bytes))
-        else None
-    )
+    gemini_tools = coerce_gemini_tools(raw_gemini_tools)
     raw_effort = cfg_dict.get("effort")
     effort_val: Effort = (
-        cast(Effort, raw_effort)
-        if raw_effort in ("auto", "low", "medium", "high", "max")
+        raw_effort
+        if raw_effort in ("auto", "off", "minimal", "low", "medium", "high", "xhigh", "max")
         else harness_defaults.DEFAULT_EFFORT
     )
 
     explicit_model = _resolve_gemini_or_configured_model(
         cfg_dict,
         parent_agent=parent_agent,
-        model_factories=model_factories,
+        model_factories=effective_factories,
         gemini_tools=gemini_tools,
         effort=effort_val,
     )
@@ -441,7 +522,7 @@ def build_agent_from_config(
         from strands_harness.agent import create_harness
         from strands_harness.config import DEFAULT_HARNESS_AGENT_CONFIG, harness_agent_kwargs_from_config
 
-        harness_cfg: dict[str, Any] = {}
+        harness_cfg: dict[str, object] = {}
         key_aliases = {
             "system_prompt": "instructions",
             "builtin_tools": "builtinTools",
@@ -465,9 +546,11 @@ def build_agent_from_config(
         harness_cfg["name"] = node_name
         harness_cfg["description"] = description
 
-        harness_kwargs = harness_agent_kwargs_from_config(
-            harness_cfg,
-            base_dir=resolved_base or Path("."),
+        harness_kwargs: dict[str, object] = dict(
+            harness_agent_kwargs_from_config(
+                harness_cfg,
+                base_dir=resolved_base or Path("."),
+            )
         )
         if explicit_model is not None:
             harness_kwargs["model"] = explicit_model
@@ -480,20 +563,27 @@ def build_agent_from_config(
             harness_kwargs.setdefault("memory", False)
         if cfg_dict.get("include_default_tools") is False and "builtin_tools" not in harness_kwargs:
             harness_kwargs["builtin_tools"] = []
+        if isinstance(explicit_model, Model) and not isinstance(
+            explicit_model, GeminiInteractionsModel
+        ):
+            # A custom Model instance (e.g. StubModel) does not have native provider web_search
+            if "builtin_tools" not in harness_kwargs:
+                harness_kwargs["builtin_tools"] = {"web_search": False}
         harness_kwargs.pop("agent_config", None)
         harness_kwargs.setdefault("callback_handler", None)
         harness_kwargs["name"] = node_name
         harness_kwargs["description"] = description
 
-        agent = create_harness(**harness_kwargs)
+        create_harness_fn = cast(Callable[..., Agent], create_harness)
+        agent = create_harness_fn(**harness_kwargs)
         agent.name = node_name
         agent.description = description
         if not session:
-            agent._session_manager = None  # pyright: ignore[reportPrivateUsage]
+            setattr(agent, "_session_manager", None)
         return agent
 
     # SDK engine (`Agent` / `AgentConfig`)
-    agent_kwargs: dict[str, Any] = {
+    agent_kwargs: dict[str, object] = {
         "name": node_name,
         "description": description,
         "system_prompt": system_prompt,
@@ -506,24 +596,25 @@ def build_agent_from_config(
     if resolved_tools:
         agent_kwargs["tools"] = resolved_tools
 
-    agent = Agent(**agent_kwargs)
+    agent_cls = cast(Callable[..., Agent], Agent)
+    agent = agent_cls(**agent_kwargs)
     if not session:
-        agent._session_manager = None  # pyright: ignore[reportPrivateUsage]
+        setattr(agent, "_session_manager", None)
     return agent
 
 
 def build_subagent_tool_from_config(
-    config: str | Path | Mapping[str, Any],
+    config: str | Path | ConfigMapping,
     *,
     parent_agent: Agent | None = None,
     name: str | None = None,
     description: str | None = None,
     preserve_context: bool = False,
     engine: Literal["auto", "harness", "sdk"] = "auto",
-    extra_tools: Sequence[Any] | None = None,
-    model_factories: Mapping[str, Callable[[], Any]] | None = None,
+    extra_tools: Sequence[object] | None = None,
+    model_factories: Mapping[str, ModelFactory] | None = None,
     base_path: Path | None = None,
-) -> Any:
+) -> object:
     """Build a Strands subagent from a JSON/dict config and wrap it as an `AgentTool` via `Agent.as_tool()`."""
     sub_agent = build_agent_from_config(
         config,
@@ -544,7 +635,7 @@ def build_subagent_tool_from_config(
 
 
 def config_to_preset(
-    config: str | Path | Mapping[str, Any],
+    config: str | Path | ConfigMapping,
     *,
     base_path: Path | None = None,
 ) -> Preset:
@@ -557,18 +648,14 @@ def config_to_preset(
         or (system_prompt.splitlines()[0][:200] if system_prompt else f"Preset agent {name}")
     )
     raw_tools_val = cfg_dict.get("tools")
-    raw_tools_list: list[Any] = (
-        list(cast(Sequence[Any], raw_tools_val))
-        if isinstance(raw_tools_val, Sequence) and not isinstance(raw_tools_val, (str, bytes))
-        else []
-    )
+    raw_tools_list: list[object] = list(raw_tools_val) if is_object_sequence(raw_tools_val) else []
     tool_names = [_tool_display_name(t) for t in raw_tools_list]
     if cfg_dict.get("use_skill"):
         if "use_skill" not in tool_names:
             tool_names.append("use_skill")
     model_val = cfg_dict.get("model") or cfg_dict.get("model_id")
-    if isinstance(model_val, Mapping):
-        model_val = cast(Mapping[str, Any], model_val).get("model_id")
+    if is_config_mapping(model_val):
+        model_val = model_val.get("model_id")
     return Preset(
         instructions=system_prompt or None,
         description=description,
@@ -577,18 +664,18 @@ def config_to_preset(
     )
 
 
-@tool(name="agent_from_config")  # pyright: ignore[reportUnknownParameterType]
+@tool
 async def agent_from_config(
     action: str = "invoke",
-    config: dict[str, Any] | str | None = None,
+    config: ConfigDict | str | None = None,
     config_path: str | None = None,
     config_name: str | None = None,
     task: str | None = None,
     engine: str = "auto",
     extra_tools: list[str] | None = None,
     preserve_context: bool = False,
-    agent: Any | None = None,
-) -> AsyncIterator[dict[str, Any]]:
+    agent: object | None = None,
+) -> AsyncIterator[ConfigDict]:
     """Create, register, inspect, or invoke Strands agents and subagents defined via JSON files or Python dicts.
 
     Supports both `strands_harness` (`create_harness` + `harness_agent_kwargs_from_config`) and Strands SDK
@@ -613,14 +700,10 @@ async def agent_from_config(
 
     if action == "list":
         configs = list_agent_configs()
-        summary: list[dict[str, Any]] = []
+        summary: list[ConfigDict] = []
         for k, v in sorted(configs.items()):
             raw_v_tools = v.get("tools")
-            v_tools: list[Any] = (
-                list(cast(Sequence[Any], raw_v_tools))
-                if isinstance(raw_v_tools, Sequence) and not isinstance(raw_v_tools, (str, bytes))
-                else []
-            )
+            v_tools: list[object] = list(raw_v_tools) if is_object_sequence(raw_v_tools) else []
             summary.append(
                 {
                     "name": k,
@@ -636,7 +719,7 @@ async def agent_from_config(
         }
         return
 
-    target_source: str | Path | Mapping[str, Any] | None = config or config_path or config_name
+    target_source: str | Path | ConfigMapping | None = config or config_path or config_name
     if target_source is None:
         yield {
             "status": "error",
@@ -645,7 +728,9 @@ async def agent_from_config(
         return
 
     try:
-        from .graph import _MODEL_FACTORIES  # pyright: ignore[reportPrivateUsage]
+        from .graph import get_model_factories
+
+        factories = get_model_factories()
 
         if action == "register_config":
             cfg_dict, resolved_base = load_agent_config_dict(target_source)
@@ -675,11 +760,11 @@ async def agent_from_config(
                 engine=effective_engine,
                 session=False,
                 extra_tools=extra_tools,
-                model_factories=_MODEL_FACTORIES,
+                model_factories=factories,
                 base_path=resolved_base,
             )
             preset = config_to_preset(cfg_dict, base_path=resolved_base)
-            info: dict[str, Any] = {
+            info: ConfigDict = {
                 "name": built.name,
                 "description": built.description,
                 "engine": _detect_engine(cfg_dict, effective_engine),
@@ -709,17 +794,10 @@ async def agent_from_config(
                 preserve_context=preserve_context,
                 engine=effective_engine,
                 extra_tools=extra_tools,
-                model_factories=_MODEL_FACTORIES,
+                model_factories=factories,
                 base_path=resolved_base,
             )
-            # Register in global tool registry so skills and graph/swarm/workflow nodes can use it by name
-            try:
-                from agentskills.tool.agent_skill import register_available_tools
-
-                register_available_tools({reg_name: sub_tool})
-            except Exception:
-                pass
-            # Also register in parent_agent's live tool_registry if called inside an Agent
+            register_factory_tools({reg_name: sub_tool})
             if parent_agent is not None and hasattr(parent_agent, "tool_registry"):
                 parent_agent.tool_registry.process_tools([sub_tool])
 
@@ -746,18 +824,17 @@ async def agent_from_config(
                 engine=effective_engine,
                 session=False,
                 extra_tools=extra_tools,
-                model_factories=_MODEL_FACTORIES,
+                model_factories=factories,
             )
-            final_result: Any = None
-            async for event in sub_agent.stream_async(task):
+            final_result: object = None
+            async for raw_event in sub_agent.stream_async(task):
+                event_obj: object = raw_event
                 yield {
                     "subagent": sub_agent.name,
-                    "event": event,
+                    "event": str(event_obj),
                 }
-                if isinstance(event, Mapping):
-                    event_map = cast(Mapping[str, Any], event)
-                    if "result" in event_map:
-                        final_result = event_map["result"]
+                if is_config_mapping(event_obj) and "result" in event_obj:
+                    final_result = event_obj["result"]
             yield {
                 "status": "success",
                 "content": [
@@ -779,12 +856,19 @@ async def agent_from_config(
 
 
 __all__ = [
+    "ConfigDict",
+    "ConfigMapping",
+    "GeminiToolSpec",
+    "ModelFactory",
     "agent_from_config",
     "build_agent_from_config",
     "build_subagent_tool_from_config",
     "clear_agent_configs",
+    "coerce_gemini_tools",
     "config_to_preset",
     "get_agent_config",
+    "is_config_mapping",
+    "is_object_sequence",
     "list_agent_configs",
     "load_agent_config_dict",
     "register_agent_config",

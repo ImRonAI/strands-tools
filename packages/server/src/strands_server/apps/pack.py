@@ -1,3 +1,4 @@
+# pyright: strict
 """Strands Pack workspace: All non-Google Strands Pack tools + Runtime handlers."""
 
 from fastmcp.apps.app import FastMCPApp
@@ -31,19 +32,19 @@ pack_tools_list = register_list_backend(
     app,
     name="pack_tools_list",
     spec=ListSpec(
-        tool="strands_my_catalog",
+        tool="search",
         data_path=("rows",),
         columns=COLUMNS,
         paging="none",
-        static_args={"action": "list_tools", "suite": "strands_pack", "limit": 100},
+        static_args={"query": "strands_pack", "limit": 100},
     ),
 )
 pack_tool_detail = register_detail_backend(
     app,
     name="pack_tool_detail",
-    tool="strands_my_catalog",
+    tool="search",
     id_param="query",
-    static_args={"action": "list_tools", "suite": "strands_pack"},
+    static_args={"query": "strands_pack"},
 )
 pack_job_run = register_form_backend(
     app, name="pack_job_run", tool="pack_runtime_job_runner", model=PackJobRunnerForm

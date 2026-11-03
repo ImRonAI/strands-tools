@@ -40,97 +40,35 @@ See the image_reader function docstring for more details on parameters and retur
 
 import os
 from os.path import expanduser
-from typing import Any
+from typing import Annotated, Any
 
 from PIL import Image
-from strands.types.tools import ToolResult, ToolUse
-
-TOOL_SPEC = {
-    "name": "image_reader",
-    "description": "Reads an image file from a given path and returns it in the format required for the Converse API",
-    "inputSchema": {
-        "json": {
-            "type": "object",
-            "properties": {
-                "image_path": {
-                    "type": "string",
-                    "description": "The path to the image file",
-                }
-            },
-            "required": ["image_path"],
-        }
-    },
-}
+from strands import tool
 
 
-def image_reader(tool: ToolUse, **kwargs: Any) -> ToolResult:
-    """
-    Read an image file from disk and prepare it for use with Converse API.
-
-    This function reads image files from the specified path, detects the image format,
-    and converts the content into the proper format required by the Converse API.
-    It handles various image formats and provides appropriate error messages when
-    issues are encountered.
-
-    How It Works:
-    ------------
-    1. The function expands the provided path (handling ~/ notation)
-    2. It checks if the file exists at the specified path
-    3. The image file is read as binary data
-    4. PIL/Pillow is used to detect the image format
-    5. The image data is formatted for the Converse API with proper format identification
-
-    Common Usage Scenarios:
-    ---------------------
-    - Visual analysis: Loading images for AI-based analysis
-    - Document processing: Loading scanned documents for text extraction
-    - Multimodal inputs: Combining image and text inputs for comprehensive tasks
-    - Image verification: Loading images to verify their validity or contents
+@tool
+def image_reader(
+    image_path: Annotated[str, "The path to the image file"],
+) -> dict[str, Any]:
+    """Reads an image file from a given path and returns it in the format required for the Converse API.
 
     Args:
-        tool: ToolUse object containing the tool usage information and parameters
-              The tool input should include:
-              - image_path (str): Path to the image file to read. Can be absolute
-                or user-relative (with ~/).
-        **kwargs: Additional keyword arguments (not used in this function)
+        image_path: Path to the image file to read. Can be absolute or user-relative (with ~/).
 
     Returns:
-        ToolResult: A dictionary containing the status and content:
-        - On success: Returns image data formatted for the Converse API
-          {
-              "toolUseId": "<tool_use_id>",
-              "status": "success",
-              "content": [{"image": {"format": "<image_format>", "source": {"bytes": <binary_data>}}}]
-          }
-        - On failure: Returns an error message
-          {
-              "toolUseId": "<tool_use_id>",
-              "status": "error",
-              "content": [{"text": "Error message"}]
-          }
-
-    Notes:
-        - Supported image formats include: PNG, JPEG/JPG, GIF, and WebP
-        - If the image format is not recognized, it defaults to PNG
-        - The function validates file existence before attempting to read
-        - User paths with tilde (~) are automatically expanded
+        Dictionary containing status and image content formatted for the Converse API.
     """
     try:
-        tool_use_id = tool["toolUseId"]
-        tool_input = tool["input"]
-
-        if "image_path" not in tool_input:
+        if not image_path:
             return {
-                "toolUseId": tool_use_id,
                 "status": "error",
                 "content": [{"text": "File path is required"}],
             }
 
-        file_path = expanduser(tool_input.get("image_path"))
+        file_path = expanduser(image_path)
 
         if not os.path.exists(file_path):
             return {
-                "toolUseId": tool_use_id,
                 "status": "error",
                 "content": [{"text": f"File not found at path: {file_path}"}],
             }
@@ -140,18 +78,16 @@ def image_reader(tool: ToolUse, **kwargs: Any) -> ToolResult:
 
         # Handle image files using PIL
         with Image.open(file_path) as img:
-            image_format = img.format.lower()
+            image_format = (img.format or "png").lower()
             if image_format not in ["png", "jpeg", "jpg", "gif", "webp"]:
                 image_format = "png"  # Default to PNG if format is not recognized
 
         return {
-            "toolUseId": tool_use_id,
             "status": "success",
             "content": [{"image": {"format": image_format, "source": {"bytes": file_bytes}}}],
         }
     except Exception as e:
         return {
-            "toolUseId": tool_use_id,
             "status": "error",
             "content": [{"text": f"Error reading file: {str(e)}"}],
         }

@@ -70,15 +70,15 @@ See the environment function docstring for more details on available actions and
 
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional
 
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-from strands.types.tools import ToolResult, ToolResultContent, ToolUse
-from typing_extensions import deprecated
+from strands import tool
+from strands.types.tools import ToolResultContent
 
 from strands_tools.utils import console_util, user_input
 
@@ -92,76 +92,6 @@ _DEPRECATION_MESSAGE = (
     "that a child shell cannot mutate the agent's own environment, so set variables in the process that launches "
     "the agent."
 )
-
-
-TOOL_SPEC = {
-    "name": "environment",
-    "description": """Runtime environment variable management tool.
-    
-Key Features:
-1. Variable Management:
-   - Get all environment variables
-   - Set/update variables
-   - Delete variables
-   - Filter by prefix
-   - Validate values
-   
-2. Actions:
-   - list: Show all or filtered variables
-   - get: Get specific variable value
-   - set: Set/update variable value
-   - delete: Remove variable
-   - validate: Check variable format/value
-   
-3. Security:
-   - Protected variables list
-   - Value validation
-   - Change tracking
-   - Variable masking: values whose name matches TOKEN/SECRET/PASSWORD/KEY/AUTH are
-     masked in get/list output (e.g. "abcd...5678") as an operator-controlled policy.
-     There is no tool input to disable this.
-
-4. Usage Examples:
-   # List all environment variables:
-   environment(action="list")
-   
-   # List variables with prefix:
-   environment(action="list", prefix="AWS_")
-   
-   # Get specific variable:
-   environment(action="get", name="MIN_SCORE")
-   
-   # Set variable:
-   environment(action="set", name="MIN_SCORE", value="0.7")
-   
-   # Delete variable:
-   environment(action="delete", name="TEMP_VAR")""",
-    "inputSchema": {
-        "json": {
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string",
-                    "enum": ["list", "get", "set", "delete", "validate"],
-                    "description": "Action to perform on environment variables",
-                },
-                "name": {
-                    "type": "string",
-                    "description": "Name of the environment variable",
-                },
-                "value": {
-                    "type": "string",
-                    "description": "Value to set for the environment variable",
-                },
-                "prefix": {
-                    "type": "string",
-                    "description": "Filter variables by prefix",
-                },
-            },
-            "required": ["action"],
-        }
-    },
-}
 
 
 # Protected variables that can't be modified
@@ -401,89 +331,45 @@ def show_operation_result(console: Console, success: bool, message: str) -> None
         console.print(format_error_message(message))
 
 
-# @deprecated surfaces in IDEs and type checkers; the logger.warning below is what
-# users actually see, since DeprecationWarning raised from inside the SDK's tool
-# invocation path is suppressed by Python's default warning filter. The message is
-# spelled out here rather than passed as _DEPRECATION_MESSAGE because mypy only
-# reports @deprecated when the argument is a string literal.
-@deprecated(
-    "environment is deprecated. This warning becomes an error log in v0.9.0. To achieve similar functionality, use "
-    "the shell tool vended by strands-agents (from strands.vended_tools import shell). This does change the security "
-    "boundary: environment masked sensitive values and guarded PROTECTED_VARS as an operator-controlled policy, "
-    "while shell executes arbitrary commands, so review it against your threat model before switching. Note also "
-    "that a child shell cannot mutate the agent's own environment, so set variables in the process that launches "
-    "the agent."
-)
-def environment(tool: ToolUse, **kwargs: Any) -> ToolResult:
-    """
-    Environment variable management tool for listing, getting, setting, and deleting environment variables.
-
-    This function provides a comprehensive interface for managing runtime environment variables
-    with rich output formatting, security features, and proper error handling. It supports
-    multiple actions for different environment variable operations, each with appropriate
-    validation and confirmation steps.
-
-    How It Works:
-    ------------
-    1. The function processes the requested action (list, get, set, delete, validate)
-    2. For destructive actions, it requires user confirmation unless in BYPASS_TOOL_CONSENT mode
-    3. Protected system variables are identified and cannot be modified
-    4. Sensitive values (tokens, passwords, etc.) are masked by default, controlled by
-       ENV_VARS_MASKED_DEFAULT
-    5. Rich output formatting provides clear visual feedback on operations
-    6. All operations return structured results for both human and programmatic use
-
-    Available Actions:
-    ---------------
-    - list: Display all environment variables or filter by prefix
-    - get: Retrieve and display a specific variable value
-    - set: Create or update a variable value (with confirmation)
-    - delete: Remove a variable from the environment (with confirmation)
-    - validate: Check if a variable exists and validate its format
-
-    Security Features:
-    ---------------
-    - Protected system variables cannot be modified
-    - Values of variables whose name contains TOKEN, SECRET, PASSWORD, KEY, or AUTH are
-      masked in output unless ENV_VARS_MASKED_DEFAULT is set to "false"
-    - Destructive actions require explicit confirmation
-    - Clear risk level indicators for all operations
-    - BYPASS_TOOL_CONSENT mode controls for testing and automation
+@tool
+def environment(
+    action: Annotated[
+        Literal["list", "get", "set", "delete", "validate"],
+        "Action to perform on environment variables",
+    ],
+    name: Annotated[
+        str | None,
+        "Name of the environment variable",
+    ] = None,
+    value: Annotated[
+        str | None,
+        "Value to set for the environment variable",
+    ] = None,
+    prefix: Annotated[
+        str | None,
+        "Filter variables by prefix",
+    ] = None,
+) -> dict[str, Any]:
+    """Runtime environment variable management tool for listing, getting, setting, and deleting environment variables.
 
     Args:
-        tool: The ToolUse object containing the action and parameters
-            tool["input"]["action"]: The action to perform (required)
-            tool["input"]["name"]: Environment variable name (for get/set/delete/validate)
-            tool["input"]["value"]: Value to set (for set action)
-            tool["input"]["prefix"]: Filter prefix for list action
-        **kwargs: Additional keyword arguments (unused)
+        action: Action to perform on environment variables (list, get, set, delete, validate).
+        name: Environment variable name (for get/set/delete/validate).
+        value: Value to set (for set action).
+        prefix: Filter prefix for list action.
 
     Returns:
-        ToolResult: Dictionary containing:
-            - toolUseId: The ID of the tool usage
-            - status: "success" or "error"
-            - content: List of content objects with results or error messages
-
-    Notes:
-        - The ENV var "BYPASS_TOOL_CONSENT" can be set to "true" to bypass confirmation prompts
-        - Protected variables are listed in PROTECTED_VARS and cannot be set or deleted
-        - Sensitive variables are detected by keywords in their names (TOKEN, SECRET, etc.)
-        - Masking is controlled by the ENV var "ENV_VARS_MASKED_DEFAULT" (default: "true")
+        Dictionary containing status and content objects with results or error messages.
     """
     logger.warning("DEPRECATION WARNING: %s", _DEPRECATION_MESSAGE)
 
     console = console_util.create()
 
-    # Default return in case of unexpected code path
-    tool_use_id = tool["toolUseId"]
     default_content: List[ToolResultContent] = [{"text": "Unknown error in environment tool"}]
-    default_result = {
-        "toolUseId": tool_use_id,
+    default_result: dict[str, Any] = {
         "status": "error",
         "content": default_content,
     }
-    tool_use_id = tool["toolUseId"]
-    tool_input = tool["input"]
 
     # Masking is operator-controlled and cannot be overridden through tool input
     masked = os.getenv("ENV_VARS_MASKED_DEFAULT", "true").lower() != "false"
@@ -493,20 +379,14 @@ def environment(tool: ToolUse, **kwargs: Any) -> ToolResult:
 
     # Actions that need confirmation
     dangerous_actions = {"set", "delete"}
-    needs_confirmation = tool_input["action"] in dangerous_actions and not strands_dev
+    needs_confirmation = action in dangerous_actions and not strands_dev
 
     # Print BYPASS_TOOL_CONSENT mode status for debugging
     if strands_dev:
         console.print("[bold green]Running in BYPASS_TOOL_CONSENT mode - confirmation bypassed[/bold green]")
 
     try:
-        action = tool_input["action"]
-
-        # Action processing starts here
-
         if action == "list":
-            prefix = tool_input.get("prefix")
-
             # Format rich table
             table = format_env_vars_table(dict(os.environ), masked=masked, prefix=prefix)
 
@@ -530,29 +410,26 @@ def environment(tool: ToolUse, **kwargs: Any) -> ToolResult:
             list_content: List[ToolResultContent] = [{"text": "\n".join(lines)}]
 
             return {
-                "toolUseId": tool_use_id,
                 "status": "success",
                 "content": list_content,
             }
 
         elif action == "get":
-            if "name" not in tool_input:
+            if name is None:
                 console.print(format_error_message("name parameter is required"))
                 raise ValueError("name parameter is required for get action")
 
-            name = tool_input["name"]
-            value = os.getenv(name)
+            env_value = os.getenv(name)
 
-            if value is None:
+            if env_value is None:
                 error_msg = f"Environment variable {name} not found"
                 console.print(format_error_message(error_msg))
                 return {
-                    "toolUseId": tool_use_id,
                     "status": "error",
                     "content": [{"text": error_msg}],
                 }
 
-            safe_value = value if value is not None else ""
+            safe_value = env_value if env_value is not None else ""
             display_value = mask_sensitive_value(name, safe_value) if masked else safe_value
 
             # Show operation preview
@@ -569,8 +446,8 @@ def environment(tool: ToolUse, **kwargs: Any) -> ToolResult:
             table.add_row("Value", display_value)
 
             # Add value properties
-            if value is not None:
-                value_str = str(value)
+            if env_value is not None:
+                value_str = str(env_value)
                 table.add_row("Length", str(len(value_str)))
                 table.add_row("Contains Spaces", "Yes" if " " in value_str else "No")
                 table.add_row("Multiline", "Yes" if "\n" in value_str else "No")
@@ -589,22 +466,17 @@ def environment(tool: ToolUse, **kwargs: Any) -> ToolResult:
 
             # Show success message
             show_operation_result(console, True, f"Successfully retrieved {name}")
-            # Create a return object with properly cast types
             get_content: List[ToolResultContent] = [{"text": f"{name} = {display_value}"}]
             return {
-                "toolUseId": tool_use_id,
                 "status": "success",
                 "content": get_content,
             }
 
         elif action == "set":
-            if "name" not in tool_input or "value" not in tool_input:
+            if name is None or value is None:
                 error_msg = "name and value parameters are required"
                 console.print(format_error_message(error_msg))
                 raise ValueError(error_msg)
-
-            name = tool_input["name"]
-            value = tool_input["value"]
 
             # Check protected status first, regardless of confirmation mode
             if is_protected(name):
@@ -612,7 +484,6 @@ def environment(tool: ToolUse, **kwargs: Any) -> ToolResult:
                 error_details = "\nProtected variables ensure system stability and security."
                 console.print(format_error_message(f"{error_msg}{error_details}"))
                 return {
-                    "toolUseId": tool_use_id,
                     "status": "error",
                     "content": [{"text": f"Cannot modify protected variable: {name}"}],
                 }
@@ -643,11 +514,9 @@ def environment(tool: ToolUse, **kwargs: Any) -> ToolResult:
                     "\n<yellow><bold>Do you want to proceed with setting this environment variable?</bold> "
                     "[y/*]</yellow>"
                 )
-                # For tests, 'y' should be recognized even with extra spaces or newlines
                 if confirm.strip().lower() != "y":
                     console.print(format_error_message("Operation cancelled by user"))
                     return {
-                        "toolUseId": tool_use_id,
                         "status": "error",
                         "content": [{"text": f"Operation cancelled by user, reason: {confirm}"}],
                     }
@@ -677,43 +546,34 @@ def environment(tool: ToolUse, **kwargs: Any) -> ToolResult:
             # Format content for return
             set_content: List[ToolResultContent] = [{"text": f"Set {name} = {value}"}]
             return {
-                "toolUseId": tool_use_id,
                 "status": "success",
                 "content": set_content,
             }
         elif action == "validate":
-            if "name" not in tool_input:
+            if name is None:
                 raise ValueError("name parameter is required for validate action")
 
-            name = tool_input["name"]
-            value = os.getenv(name)
+            env_value = os.getenv(name)
 
-            if value is None:
+            if env_value is None:
                 error_content: List[ToolResultContent] = [{"text": f"Environment variable {name} not found"}]
                 return {
-                    "toolUseId": tool_use_id,
                     "status": "error",
                     "content": error_content,
                 }
 
-            # Add validation logic here based on variable name patterns
-            # For example, validate URL format, numeric values, etc.
-
             # Format content for return
             validate_content: List[ToolResultContent] = [{"text": f"Environment variable {name} is valid"}]
             return {
-                "toolUseId": tool_use_id,
                 "status": "success",
                 "content": validate_content,
             }
 
         elif action == "delete":
-            if "name" not in tool_input:
+            if name is None:
                 error_msg = "name parameter is required for delete action"
                 console.print(format_error_message(error_msg))
                 raise ValueError(error_msg)
-
-            name = tool_input["name"]
 
             # Check protected status first
             if is_protected(name):
@@ -723,7 +583,6 @@ def environment(tool: ToolUse, **kwargs: Any) -> ToolResult:
                 )
                 console.print(format_error_message(error_msg))
                 return {
-                    "toolUseId": tool_use_id,
                     "status": "error",
                     "content": [{"text": f"Cannot delete protected variable: {name}"}],
                 }
@@ -733,7 +592,6 @@ def environment(tool: ToolUse, **kwargs: Any) -> ToolResult:
                 error_msg = f"Environment variable not found: {name}"
                 console.print(format_error_message(error_msg))
                 return {
-                    "toolUseId": tool_use_id,
                     "status": "error",
                     "content": [{"text": error_msg}],
                 }
@@ -765,17 +623,15 @@ def environment(tool: ToolUse, **kwargs: Any) -> ToolResult:
                 confirm = user_input.get_user_input(
                     "\n<red><bold>Do you want to proceed with deleting this environment variable?</bold> [y/*]</red>"
                 )
-                # For tests, 'y' should be recognized even with extra spaces or newlines
                 if confirm.strip().lower() != "y":
                     console.print(format_error_message("Operation cancelled by user"))
                     return {
-                        "toolUseId": tool_use_id,
                         "status": "error",
                         "content": [{"text": f"Operation cancelled by user, reason: {confirm}"}],
                     }
 
             # Delete the variable
-            value = os.environ[name]
+            prev_value = os.environ[name]
             del os.environ[name]
 
             # Show success message
@@ -784,7 +640,7 @@ def environment(tool: ToolUse, **kwargs: Any) -> ToolResult:
             success_table.add_column("Field", style="cyan")
             success_table.add_column("Value", style="green")
             success_table.add_row("Variable", name)
-            success_table.add_row("Previous Value", value)
+            success_table.add_row("Previous Value", prev_value)
             success_table.add_row("Operation", "Delete")
             success_table.add_row("Status", "✅ Complete")
 
@@ -800,7 +656,6 @@ def environment(tool: ToolUse, **kwargs: Any) -> ToolResult:
             # Format content for return
             delete_content: List[ToolResultContent] = [{"text": f"Deleted environment variable: {name}"}]
             return {
-                "toolUseId": tool_use_id,
                 "status": "success",
                 "content": delete_content,
             }
@@ -808,10 +663,9 @@ def environment(tool: ToolUse, **kwargs: Any) -> ToolResult:
     except Exception as e:
         exception_content: List[ToolResultContent] = [{"text": f"Environment tool error: {str(e)}"}]
         return {
-            "toolUseId": tool_use_id,
             "status": "error",
             "content": exception_content,
         }
 
     # Fallback return in case no action matched
-    return default_result  # type: ignore
+    return default_result

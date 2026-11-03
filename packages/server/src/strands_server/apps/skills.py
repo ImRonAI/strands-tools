@@ -1,3 +1,4 @@
+# pyright: strict
 """Strands Agent Skills workspace: Pattern #2 (`skill`) & Pattern #3 (`use_skill` with assignable tools)."""
 
 from fastmcp.apps.app import FastMCPApp
@@ -34,11 +35,11 @@ skills_list = register_list_backend(
     app,
     name="skills_list",
     spec=ListSpec(
-        tool="strands_my_catalog",
-        data_path=("rows",),
+        tool="list_available_skills",
+        data_path=("skills",),
         columns=COLUMNS,
         paging="none",
-        static_args={"action": "list_skills", "limit": 50},
+        static_args={},
     ),
 )
 skill_detail = register_detail_backend(

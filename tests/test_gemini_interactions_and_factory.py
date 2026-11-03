@@ -7,11 +7,12 @@ and Perplexity MCP Server surgical extraction.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import cast
 
+import google.genai as genai
 import pydantic
 import pytest
 from google.genai import errors as genai_errors
@@ -24,6 +25,7 @@ from strands.models.gemini_interactions import (
 )
 from strands.types.content import Messages
 from strands.types.exceptions import ContextWindowOverflowException, ModelThrottledException
+from strands.types.streaming import StreamEvent
 from strands.types.tools import ToolSpec
 from strands_graph_tool import build_agent_from_config, build_graph
 from strands_harness import (
@@ -37,6 +39,36 @@ from strands_harness.models import resolve_model
 from agentskills import get_gemini_agent_model
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _format_model_request(
+    model: GeminiInteractionsModel,
+    *,
+    messages: Messages,
+    tool_specs: list[ToolSpec] | None = None,
+    system_prompt: str | None = None,
+    params: dict[str, object] | None = None,
+    tool_choice: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    formatter = cast(
+        Callable[..., dict[str, object]],
+        getattr(model, "_format_request"),
+    )
+    return formatter(
+        messages=messages,
+        tool_specs=tool_specs,
+        system_prompt=system_prompt,
+        params=params,
+        tool_choice=tool_choice,
+    )
+
+
+def _translate_model_exception(model: GeminiInteractionsModel, err: Exception) -> Exception:
+    translator = cast(
+        Callable[[Exception], Exception],
+        getattr(model, "_translate_exception"),
+    )
+    return translator(err)
 
 
 # ---------------------------------------------------------------------------
@@ -101,7 +133,7 @@ def test_all_nine_native_interactions_api_tools_normalize_and_validate() -> None
         }
     ]
 
-    gemini_tools_config: list[Any] = [
+    gemini_tools_config: list[str | Mapping[str, object]] = [
         "google_search",
         "code_execution",
         "url_context",
@@ -143,21 +175,23 @@ def test_all_nine_native_interactions_api_tools_normalize_and_validate() -> None
         model_id="gemini-4-argon",
         gemini_tools=gemini_tools_config,
     )
-    request = model._format_request(  # pyright: ignore[reportPrivateUsage]
+    request = _format_model_request(
+        model,
         messages=[{"role": "user", "content": [{"text": "Run all tools."}]}],
         tool_specs=strands_tool_specs,
         system_prompt="You are a branding strategist.",
         tool_choice={"auto": {}},
     )
 
-    tools_out = request["tools"]
+    tools_out = cast(list[dict[str, object]], request["tools"])
     assert len(tools_out) == 9
-    observed_types = {t["type"] for t in tools_out}
+    observed_types = {cast(str, t["type"]) for t in tools_out}
     assert observed_types == expected_types
 
     fn_tool = next(t for t in tools_out if t["type"] == "function")
     assert fn_tool["name"] == "calculate_roi"
-    assert fn_tool["parameters"]["required"] == ["revenue", "cost"]
+    fn_params = cast(Mapping[str, object], fn_tool["parameters"])
+    assert fn_params["required"] == ["revenue", "cost"]
 
     cu_tool = next(t for t in tools_out if t["type"] == "computer_use")
     assert cu_tool["environment"] == "browser"
@@ -239,7 +273,8 @@ def test_multiturn_stateless_steps_formatting_preserves_thought_signatures_and_t
         }
     ]
 
-    request = model._format_request(  # pyright: ignore[reportPrivateUsage]
+    request = _format_model_request(
+        model,
         messages=messages,
         tool_specs=multiply_spec,
         system_prompt="Be concise.",
@@ -250,7 +285,7 @@ def test_multiturn_stateless_steps_formatting_preserves_thought_signatures_and_t
     assert request["model"] == "gemini-3.8-flash"
     assert request["store"] is False
     assert request["system_instruction"] == "Be concise."
-    steps: list[dict[str, Any]] = request["input"]
+    steps = cast(list[dict[str, object]], request["input"])
     assert len(steps) == 4
     assert steps[0]["type"] == "user_input"
     assert steps[1]["type"] == "thought"
@@ -261,7 +296,7 @@ def test_multiturn_stateless_steps_formatting_preserves_thought_signatures_and_t
     assert steps[3]["call_id"] == "call_1"
     assert steps[3]["result"] == {"product": 42}
 
-    gen_cfg = request["generation_config"]
+    gen_cfg = cast(Mapping[str, object], request["generation_config"])
     assert gen_cfg["temperature"] == 0.2
     assert gen_cfg["max_output_tokens"] == 2048
     assert gen_cfg["thinking_level"] == "high"
@@ -274,20 +309,29 @@ def test_multiturn_stateless_steps_formatting_preserves_thought_signatures_and_t
 
 
 class _FakeInteractionsResource:
-    def __init__(self, handler: Any) -> None:
+    def __init__(self, handler: Callable[..., Awaitable[object]]) -> None:
         self._handler = handler
 
-    async def create(self, **kwargs: Any) -> Any:
+    async def create(self, **kwargs: object) -> object:
         return await self._handler(**kwargs)
 
 
 class _FakeClient:
-    def __init__(self, handler: Any) -> None:
+    def __init__(self, handler: Callable[..., Awaitable[object]]) -> None:
         self.aio = SimpleNamespace(interactions=_FakeInteractionsResource(handler))
 
 
+def _delta_dict(ev: StreamEvent) -> Mapping[str, object]:
+    cbd = ev.get("contentBlockDelta")
+    if isinstance(cbd, Mapping):
+        delta = cbd.get("delta")
+        if isinstance(delta, Mapping):
+            return cast(Mapping[str, object], delta)
+    return {}
+
+
 async def test_gemini_interactions_stream_translates_sse_events_to_strands_events() -> None:
-    sse_events = [
+    sse_events: list[SimpleNamespace] = [
         SimpleNamespace(
             event_type="interaction.created",
             interaction=SimpleNamespace(id="inter_001"),
@@ -369,11 +413,11 @@ async def test_gemini_interactions_stream_translates_sse_events_to_strands_event
         ),
     ]
 
-    async def _fake_create(**kwargs: Any) -> AsyncIterator[Any]:
+    async def _fake_create(**kwargs: object) -> AsyncIterator[SimpleNamespace]:
         assert kwargs["model"] == "gemini-4-argon"
         assert kwargs["stream"] is True
 
-        async def _gen() -> AsyncIterator[Any]:
+        async def _gen() -> AsyncIterator[SimpleNamespace]:
             for item in sse_events:
                 yield item
 
@@ -381,7 +425,7 @@ async def test_gemini_interactions_stream_translates_sse_events_to_strands_event
 
     model = GeminiInteractionsModel(
         model_id="gemini-4-argon",
-        client=_FakeClient(_fake_create),  # pyright: ignore[reportArgumentType]
+        client=cast(genai.Client, _FakeClient(_fake_create)),
     )
 
     events = [
@@ -393,31 +437,33 @@ async def test_gemini_interactions_stream_translates_sse_events_to_strands_event
 
     assert events[0] == {"messageStart": {"role": "assistant"}}
     assert any(
-        ev.get("contentBlockDelta", {}).get("delta", {}).get("reasoningContent", {}).get("text")
+        cast(Mapping[str, object], _delta_dict(ev).get("reasoningContent") or {}).get("text")
         == "Thinking through the problem..."
         for ev in events
     )
     assert any(
-        ev.get("contentBlockDelta", {}).get("delta", {}).get("reasoningContent", {}).get("signature") == "sig-xyz"
+        cast(Mapping[str, object], _delta_dict(ev).get("reasoningContent") or {}).get("signature") == "sig-xyz"
+        for ev in events
+    )
+    assert any(_delta_dict(ev).get("text") == "Here is the grounded answer." for ev in events)
+    assert any("citation" in _delta_dict(ev) for ev in events)
+    assert any(
+        cast(
+            Mapping[str, object],
+            cast(Mapping[str, object], (ev.get("contentBlockStart") or {}).get("start") or {}).get("toolUse") or {},
+        ).get("name")
+        == "lookup_brand"
         for ev in events
     )
     assert any(
-        ev.get("contentBlockDelta", {}).get("delta", {}).get("text") == "Here is the grounded answer."
-        for ev in events
-    )
-    assert any("citation" in ev.get("contentBlockDelta", {}).get("delta", {}) for ev in events)
-    assert any(
-        (((ev.get("contentBlockStart") or {}).get("start") or {}).get("toolUse") or {}).get("name") == "lookup_brand"
-        for ev in events
-    )
-    assert any(
-        ((ev.get("contentBlockDelta") or {}).get("delta") or {}).get("toolUse", {}).get("input") == '{"brand": "Acme"}'
+        cast(Mapping[str, object], _delta_dict(ev).get("toolUse") or {}).get("input") == '{"brand": "Acme"}'
         for ev in events
     )
     assert {"messageStop": {"stopReason": "tool_use"}} in events
     metadata_events = [ev for ev in events if "metadata" in ev]
     assert len(metadata_events) == 1
-    usage = metadata_events[0].get("metadata", {}).get("usage", {})
+    meta_dict = cast(Mapping[str, object], metadata_events[0].get("metadata") or {})
+    usage = cast(Mapping[str, object], meta_dict.get("usage") or {})
     assert usage.get("inputTokens") == 120
     assert usage.get("outputTokens") == 45
     assert usage.get("cacheReadInputTokens") == 20
@@ -428,7 +474,7 @@ async def test_gemini_interactions_structured_output_parses_pydantic_model() -> 
         brand_name: str
         score: int
 
-    async def _fake_create(**kwargs: Any) -> Any:
+    async def _fake_create(**kwargs: object) -> SimpleNamespace:
         assert kwargs["stream"] is False
         assert kwargs["response_mime_type"] == "application/json"
         assert "response_format" in kwargs
@@ -443,7 +489,7 @@ async def test_gemini_interactions_structured_output_parses_pydantic_model() -> 
 
     model = GeminiInteractionsModel(
         model_id="gemini-3.8-flash",
-        client=_FakeClient(_fake_create),  # pyright: ignore[reportArgumentType]
+        client=cast(genai.Client, _FakeClient(_fake_create)),
     )
     events = [
         ev
@@ -476,9 +522,11 @@ def test_default_model_and_fallback_order_constants() -> None:
 async def test_model_router_fails_over_on_bandwidth_or_capacity_errors_in_exact_order() -> None:
     attempted_models: list[str] = []
 
-    def _make_client_for(expected_model: str, *, fail_status: int | None = None) -> Any:
-        async def _handler(**kwargs: Any) -> AsyncIterator[Any]:
-            attempted_models.append(kwargs["model"])
+    def _make_client_for(expected_model: str, *, fail_status: int | None = None) -> _FakeClient:
+        async def _handler(**kwargs: object) -> AsyncIterator[SimpleNamespace]:
+            model_arg = kwargs.get("model")
+            assert isinstance(model_arg, str)
+            attempted_models.append(model_arg)
             if fail_status is not None:
                 raise genai_errors.APIError(
                     fail_status,
@@ -491,7 +539,7 @@ async def test_model_router_fails_over_on_bandwidth_or_capacity_errors_in_exact_
                     },
                 )
 
-            async def _gen() -> AsyncIterator[Any]:
+            async def _gen() -> AsyncIterator[SimpleNamespace]:
                 yield SimpleNamespace(
                     event_type="interaction.created",
                     interaction=SimpleNamespace(id=f"id_{expected_model}"),
@@ -523,13 +571,13 @@ async def test_model_router_fails_over_on_bandwidth_or_capacity_errors_in_exact_
         "gemini-3.8-flash",
         "gemini-3.5-flash-lite",
     ]
-    assert isinstance(router._strategy, GeminiCapacityFallbackStrategy)  # pyright: ignore[reportPrivateUsage]
+    assert isinstance(getattr(router, "_strategy"), GeminiCapacityFallbackStrategy)
 
     # Inject fake clients: gemini-4-argon -> 429 RESOURCE_EXHAUSTED, gemini-3.8-flash -> 503 UNAVAILABLE,
     # gemini-3.5-flash-lite -> succeeds!
-    router.candidates[0].model._custom_client = _make_client_for("gemini-4-argon", fail_status=429)  # pyright: ignore[reportAttributeAccessIssue]
-    router.candidates[1].model._custom_client = _make_client_for("gemini-3.8-flash", fail_status=503)  # pyright: ignore[reportAttributeAccessIssue]
-    router.candidates[2].model._custom_client = _make_client_for("gemini-3.5-flash-lite", fail_status=None)  # pyright: ignore[reportAttributeAccessIssue]
+    setattr(router.candidates[0].model, "_custom_client", _make_client_for("gemini-4-argon", fail_status=429))
+    setattr(router.candidates[1].model, "_custom_client", _make_client_for("gemini-3.8-flash", fail_status=503))
+    setattr(router.candidates[2].model, "_custom_client", _make_client_for("gemini-3.5-flash-lite", fail_status=None))
 
     agent = Agent(model=router, retry_strategy=None, callback_handler=None)
     result = await agent.invoke_async("Test failover chain.")
@@ -545,12 +593,14 @@ async def test_model_router_fails_over_on_bandwidth_or_capacity_errors_in_exact_
 async def test_model_router_does_not_fail_over_on_non_capacity_error() -> None:
     attempted_models: list[str] = []
 
-    async def _bad_request_handler(**kwargs: Any) -> AsyncIterator[Any]:
-        attempted_models.append(kwargs["model"])
+    async def _bad_request_handler(**kwargs: object) -> AsyncIterator[SimpleNamespace]:
+        model_arg = kwargs.get("model")
+        assert isinstance(model_arg, str)
+        attempted_models.append(model_arg)
         raise ValueError("Invalid tool schema in caller request")
 
     router = build_gemini_fallback_router()
-    router.candidates[0].model._custom_client = _FakeClient(_bad_request_handler)  # pyright: ignore[reportAttributeAccessIssue]
+    setattr(router.candidates[0].model, "_custom_client", _FakeClient(_bad_request_handler))
 
     agent = Agent(model=router, retry_strategy=None, callback_handler=None)
     with pytest.raises(ValueError, match="Invalid tool schema"):
@@ -571,7 +621,7 @@ def test_context_window_overflow_is_mapped_cleanly() -> None:
             }
         },
     )
-    mapped = model._translate_exception(err)  # pyright: ignore[reportPrivateUsage]
+    mapped = _translate_model_exception(model, err)
     assert isinstance(mapped, ContextWindowOverflowException)
 
     throttled_err = genai_errors.APIError(
@@ -584,7 +634,7 @@ def test_context_window_overflow_is_mapped_cleanly() -> None:
             }
         },
     )
-    mapped_throttled = model._translate_exception(throttled_err)  # pyright: ignore[reportPrivateUsage]
+    mapped_throttled = _translate_model_exception(model, throttled_err)
     assert isinstance(mapped_throttled, ModelThrottledException)
 
 
@@ -602,7 +652,7 @@ def test_create_harness_defaults_to_gemini_fallback_router_with_gemini_tools() -
         memory=False,
         skills=False,
     )
-    router = agent._model_router  # pyright: ignore[reportPrivateUsage]
+    router = getattr(agent, "_model_router")
     assert isinstance(router, ModelRouter)
     assert isinstance(agent.model, GeminiInteractionsModel)
     assert agent.model.get_config()["model_id"] == "gemini-4-argon"
@@ -644,7 +694,7 @@ def test_build_agent_from_config_sdk_and_harness_engines_wire_gemini_and_tools()
             "gemini_tools": ["google_search", "url_context", "code_execution"],
         }
     )
-    sdk_router = sdk_agent._model_router  # pyright: ignore[reportPrivateUsage]
+    sdk_router = getattr(sdk_agent, "_model_router")
     assert isinstance(sdk_router, ModelRouter)
     assert [c.name for c in sdk_router.candidates] == [
         "gemini-4-argon",
@@ -686,7 +736,7 @@ def test_build_graph_nodes_default_to_gemini_router_and_accept_gemini_model_ids(
     primary_exec = g.nodes["primary"].executor
     fast_exec = g.nodes["fast"].executor
     assert isinstance(primary_exec, Agent)
-    assert isinstance(primary_exec._model_router, ModelRouter)  # pyright: ignore[reportPrivateUsage]
+    assert isinstance(getattr(primary_exec, "_model_router"), ModelRouter)
     assert isinstance(primary_exec.model, GeminiInteractionsModel)
     assert primary_exec.model.get_config()["model_id"] == "gemini-4-argon"
     assert isinstance(fast_exec, Agent)

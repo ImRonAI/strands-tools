@@ -9,12 +9,12 @@ from __future__ import annotations
 import os
 import re
 import textwrap
-from typing import Any
+from typing import Annotated, Any, Literal
 
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.pool import NullPool
-from strands.types.tools import ToolResult, ToolUse
+from strands import tool
 import sqlglot
 from sqlglot import exp
 from .models import SqlDatabaseInput
@@ -472,117 +472,111 @@ class StrandsSQL:
             agent = Agent(tools=[db.as_tool()])
             agent("List all tables")
         """
-        from strands.tools import Tool
-
         instance = self  # capture for closure
 
-        def _bound_sql_database(tool: ToolUse, **kwargs: Any) -> ToolResult:
-            tool_input = dict(tool.get("input", {}))
-            # Inject instance-level defaults so the agent never needs to supply them
-            tool_input.setdefault("connection_string", instance._connection_string)
-            tool_input.setdefault("read_only", instance.read_only)
-            tool_input.setdefault("max_rows", instance.max_rows)
-            tool_input.setdefault("timeout", instance.timeout)
-            tool_input.setdefault("output_format", instance.output_format)
-            if instance.allowed_tables is not None:
-                tool_input.setdefault("allowed_tables", instance.allowed_tables)
-            if instance.blocked_tables is not None:
-                tool_input.setdefault("blocked_tables", instance.blocked_tables)
-            modified_tool = dict(tool)
-            modified_tool["input"] = tool_input
-            return sql_database(modified_tool, **kwargs)
+        @tool(name="sql_database", description=sql_database.tool_spec["description"])
+        def _bound_sql_database(
+            action: Annotated[
+                Literal["list_tables", "describe_table", "schema_summary", "query", "execute"],
+                "The action to perform.",
+            ],
+            sql: Annotated[str | None, "SQL string for 'query' or 'execute' actions."] = None,
+            table: Annotated[str | None, "Table name for 'describe_table' action."] = None,
+            connection_string: Annotated[
+                str | None,
+                "SQLAlchemy connection string. Falls back to DATABASE_URL env var.",
+            ] = None,
+            read_only: Annotated[bool | None, "Block write queries. Default true."] = None,
+            max_rows: Annotated[int | None, "Max rows returned by 'query'. Default 500."] = None,
+            timeout: Annotated[int | None, "Query timeout in seconds. Default 30."] = None,
+            output_format: Annotated[
+                Literal["json", "markdown"] | None,
+                "Output format for query results. Default 'markdown'.",
+            ] = None,
+            allowed_tables: Annotated[
+                list[str] | None,
+                "Allowlist of table names the agent may access.",
+            ] = None,
+            blocked_tables: Annotated[
+                list[str] | None,
+                "Blocklist of table names the agent may not access.",
+            ] = None,
+        ) -> dict[str, Any]:
+            return sql_database(
+                action=action,
+                sql=sql,
+                table=table,
+                connection_string=connection_string if connection_string is not None else instance._connection_string,
+                read_only=read_only if read_only is not None else instance.read_only,
+                max_rows=max_rows if max_rows is not None else instance.max_rows,
+                timeout=timeout if timeout is not None else instance.timeout,
+                output_format=output_format if output_format is not None else instance.output_format,
+                allowed_tables=allowed_tables if allowed_tables is not None else instance.allowed_tables,
+                blocked_tables=blocked_tables if blocked_tables is not None else instance.blocked_tables,
+            )
 
-        return Tool.from_function(
-            func=_bound_sql_database,
-            name=TOOL_SPEC["name"],
-            description=TOOL_SPEC["description"],
-            input_schema=TOOL_SPEC["inputSchema"]["json"],
-        )
+        return _bound_sql_database
 
 
 # ---------------------------------------------------------------------------
-# TOOL_SPEC + low-level tool handler (used by StrandsSQL.as_tool and get_tool)
+# @tool handler (used by StrandsSQL.as_tool and get_tool)
 # ---------------------------------------------------------------------------
 
-TOOL_SPEC = {
-    "name": "sql_database",
-    "description": textwrap.dedent("""\
-        General-purpose SQL tool. Supports list_tables, describe_table,
-        schema_summary, query (SELECT), and execute (write, if enabled).
-        Works with PostgreSQL, MySQL, and SQLite via SQLAlchemy.
-    """),
-    "inputSchema": {
-        "json": {
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string",
-                    "enum": ["list_tables", "describe_table", "schema_summary", "query", "execute"],
-                    "description": "The action to perform.",
-                },
-                "sql": {
-                    "type": "string",
-                    "description": "SQL string for 'query' or 'execute' actions.",
-                },
-                "table": {
-                    "type": "string",
-                    "description": "Table name for 'describe_table' action.",
-                },
-                "connection_string": {
-                    "type": "string",
-                    "description": "SQLAlchemy connection string. Falls back to DATABASE_URL env var.",
-                },
-                "read_only": {
-                    "type": "boolean",
-                    "description": "Block write queries. Default true.",
-                },
-                "max_rows": {
-                    "type": "integer",
-                    "description": "Max rows returned by 'query'. Default 500.",
-                },
-                "timeout": {
-                    "type": "integer",
-                    "description": "Query timeout in seconds. Default 30.",
-                },
-                "output_format": {
-                    "type": "string",
-                    "enum": ["json", "markdown"],
-                    "description": "Output format for query results. Default 'markdown'.",
-                },
-                "allowed_tables": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Allowlist of table names the agent may access.",
-                },
-                "blocked_tables": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Blocklist of table names the agent may not access.",
-                },
-            },
-            "required": ["action"],
-        }
-    },
-}
 
-
-def sql_database(tool: ToolUse, **kwargs: Any) -> ToolResult:
-    """Low-level Strands tool handler. Prefer StrandsSQL for direct usage."""
-    tool_input = tool.get("input", {})
-
+@tool
+def sql_database(
+    action: Annotated[
+        Literal["list_tables", "describe_table", "schema_summary", "query", "execute"],
+        "The action to perform.",
+    ],
+    sql: Annotated[str | None, "SQL string for 'query' or 'execute' actions."] = None,
+    table: Annotated[str | None, "Table name for 'describe_table' action."] = None,
+    connection_string: Annotated[
+        str | None,
+        "SQLAlchemy connection string. Falls back to DATABASE_URL env var.",
+    ] = None,
+    read_only: Annotated[bool, "Block write queries. Default true."] = True,
+    max_rows: Annotated[int, "Max rows returned by 'query'. Default 500."] = 500,
+    timeout: Annotated[int, "Query timeout in seconds. Default 30."] = 30,
+    output_format: Annotated[
+        Literal["json", "markdown"],
+        "Output format for query results. Default 'markdown'.",
+    ] = "markdown",
+    allowed_tables: Annotated[
+        list[str] | None,
+        "Allowlist of table names the agent may access.",
+    ] = None,
+    blocked_tables: Annotated[
+        list[str] | None,
+        "Blocklist of table names the agent may not access.",
+    ] = None,
+) -> dict[str, Any]:
+    """General-purpose SQL tool. Supports list_tables, describe_table,
+    schema_summary, query (SELECT), and execute (write, if enabled).
+    Works with PostgreSQL, MySQL, and SQLite via SQLAlchemy.
+    """
     try:
-        params = SqlDatabaseInput(**tool_input)
+        params = SqlDatabaseInput(
+            action=action,
+            sql=sql,
+            table=table,
+            connection_string=connection_string,
+            read_only=read_only,
+            max_rows=max_rows,
+            timeout=timeout,
+            output_format=output_format,
+            allowed_tables=allowed_tables,
+            blocked_tables=blocked_tables,
+        )
     except Exception as exc:
         return {
-            "toolUseId": tool["toolUseId"],
             "status": "error",
             "content": [{"text": f"Invalid input: {exc}"}],
         }
 
-    connection_string = params.connection_string or os.environ.get("DATABASE_URL")
-    if not connection_string:
+    resolved_connection_string = params.connection_string or os.environ.get("DATABASE_URL")
+    if not resolved_connection_string:
         return {
-            "toolUseId": tool["toolUseId"],
             "status": "error",
             "content": [
                 {"text": "No connection string provided. Set DATABASE_URL or pass connection_string."}
@@ -591,14 +585,12 @@ def sql_database(tool: ToolUse, **kwargs: Any) -> ToolResult:
 
     if params.read_only and params.action == "execute":
         return {
-            "toolUseId": tool["toolUseId"],
             "status": "error",
             "content": [{"text": "Write queries are blocked. Set read_only=False to enable execute."}],
         }
 
     if params.read_only and params.action == "query" and params.sql and _is_write_query(params.sql):
         return {
-            "toolUseId": tool["toolUseId"],
             "status": "error",
             "content": [
                 {
@@ -611,10 +603,9 @@ def sql_database(tool: ToolUse, **kwargs: Any) -> ToolResult:
         }
 
     try:
-        engine = _get_engine(connection_string, params.timeout)
+        engine = _get_engine(resolved_connection_string, params.timeout)
     except Exception as exc:
         return {
-            "toolUseId": tool["toolUseId"],
             "status": "error",
             "content": [{"text": f"Connection failed: {_sanitize_error(exc)}"}],
         }
@@ -666,34 +657,17 @@ def sql_database(tool: ToolUse, **kwargs: Any) -> ToolResult:
         result = f"Unexpected error: {_sanitize_error(exc)}"
 
     return {
-        "toolUseId": tool["toolUseId"],
         "status": "success",
         "content": [{"text": result}],
     }
 
 
-sql_database.TOOL_SPEC = TOOL_SPEC  # type: ignore[attr-defined]
-sql_database.tool_spec = TOOL_SPEC  # type: ignore[attr-defined]
-
-
 def get_tool():
     """Return a Strands Tool using the DATABASE_URL environment variable."""
-    from strands.tools import Tool
-
-    return Tool.from_function(
-        func=sql_database,
-        name=TOOL_SPEC["name"],
-        description=TOOL_SPEC["description"],
-        input_schema=TOOL_SPEC["inputSchema"]["json"],
-    )
+    return sql_database
 
 
-def run_sql_database(**kwargs):
+def run_sql_database(**kwargs: Any) -> str:
     """Direct usage without needing ToolUse format. Prefer StrandsSQL for new code."""
-    result = sql_database(
-        tool={
-            "toolUseId": "direct",
-            "input": kwargs,
-        }
-    )
-    return result["content"][0]["text"]
+    result = sql_database(**kwargs)
+    return str(result["content"][0]["text"])

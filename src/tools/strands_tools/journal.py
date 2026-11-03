@@ -47,7 +47,7 @@ See the journal function docstring for more details on available actions and par
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Annotated, Any, Dict, Literal, Optional
 
 from rich import box
 from rich.console import Console
@@ -55,7 +55,8 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-from strands.types.tools import ToolResult, ToolUse
+from strands import tool
+from strands.types.tools import ToolResult
 from typing_extensions import deprecated
 
 from strands_tools.utils import console_util
@@ -66,36 +67,6 @@ _DEPRECATION_MESSAGE = (
     "journal is deprecated. This warning becomes an error log in v0.9.0. Migration path: use "
     "`from strands.vended_tools import notebook` for session-scoped notes and tasks."
 )
-
-TOOL_SPEC = {
-    "name": "journal",
-    "description": "Create and manage daily journal entries with tasks and notes",
-    "inputSchema": {
-        "json": {
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string",
-                    "enum": ["write", "read", "list", "add_task"],
-                    "description": "Action to perform (write/read/list/add_task)",
-                },
-                "content": {
-                    "type": "string",
-                    "description": "Content to write (for write action)",
-                },
-                "date": {
-                    "type": "string",
-                    "description": "Date in YYYY-MM-DD format (defaults to today)",
-                },
-                "task": {
-                    "type": "string",
-                    "description": "Task to add (for add_task action)",
-                },
-            },
-            "required": ["action"],
-        }
-    },
-}
 
 
 def ensure_journal_dir() -> Path:
@@ -213,73 +184,47 @@ def create_rich_response(console: Console, action: str, result: Dict[str, Any]) 
 # invocation path is suppressed by Python's default warning filter. The message is
 # spelled out here rather than passed as _DEPRECATION_MESSAGE because mypy only
 # reports @deprecated when the argument is a string literal.
+@tool
 @deprecated(
     "journal is deprecated. This warning becomes an error log in v0.9.0. Migration path: use "
     "`from strands.vended_tools import notebook` for session-scoped notes and tasks."
 )
-def journal(tool: ToolUse, **kwargs: Any) -> ToolResult:
+def journal(
+    action: Annotated[
+        Literal["write", "read", "list", "add_task"],
+        "Action to perform (write/read/list/add_task)",
+    ],
+    content: Annotated[
+        Optional[str],
+        "Content to write (for write action)",
+    ] = None,
+    date: Annotated[
+        Optional[str],
+        "Date in YYYY-MM-DD format (defaults to today)",
+    ] = None,
+    task: Annotated[
+        Optional[str],
+        "Task to add (for add_task action)",
+    ] = None,
+) -> ToolResult:
     """
     Create and manage daily journal entries with tasks and notes.
 
     This tool allows you to write and read journal entries, add tasks, and list all
     available journal entries. Each journal is stored as a Markdown file in the
     cwd()/journal/ directory, organized by date.
-
-    How It Works:
-    ------------
-    1. Journal entries are stored as Markdown files in the journal directory
-    2. Each file is named with the date format YYYY-MM-DD.md
-    3. Entries within a journal are timestamped with HH:MM:SS
-    4. Tasks are stored with checkbox format (- [ ] task description)
-    5. Rich formatting is applied when displaying journal content
-
-    Journal Actions:
-    --------------
-    - write: Create a new entry in the specified date's journal
-    - read: Display the content of a journal for a specific date
-    - list: Show all available journal entries with stats
-    - add_task: Add a task item to the specified date's journal
-
-    Common Usage Scenarios:
-    ---------------------
-    - Daily note-taking and journaling
-    - Task and todo list management
-    - Progress tracking and reflection
-    - Timestamped logging and record keeping
-
-    Args:
-        tool: The tool use object containing input parameters
-            - action: Action to perform (write/read/list/add_task)
-            - content: Content to write (required for write action)
-            - date: Date in YYYY-MM-DD format (defaults to today)
-            - task: Task to add (required for add_task action)
-
-    Returns:
-        ToolResult containing status and response content in the format:
-        {
-            "toolUseId": "<tool_use_id>",
-            "status": "success|error",
-            "content": [{"text": "Response message"}]
-        }
-
-        Success case: Returns confirmation of the action performed
-        Error case: Returns information about what went wrong
-
-    Notes:
-        - If no date is specified, the current date is used
-        - Each journal entry is automatically timestamped
-        - The tool creates the journal directory if it doesn't exist
-        - A rich text interface is provided for better user experience
-        - Task completion status is maintained between sessions
     """
     console = console_util.create()
     logger.warning("DEPRECATION WARNING: %s", _DEPRECATION_MESSAGE)
 
-    tool_use_id = tool["toolUseId"]
-    tool_input = tool["input"]
-
-    action = tool_input["action"]
-    date = tool_input.get("date")
+    tool_use_id = "journal"
+    tool_input: Dict[str, Any] = {"action": action}
+    if content is not None:
+        tool_input["content"] = content
+    if date is not None:
+        tool_input["date"] = date
+    if task is not None:
+        tool_input["task"] = task
 
     try:
         if action == "write":

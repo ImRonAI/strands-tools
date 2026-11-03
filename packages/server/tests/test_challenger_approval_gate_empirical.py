@@ -1,3 +1,4 @@
+# pyright: strict
 """Empirical challenger test suite for FastMCP ApprovalGate (Milestone 2 Iteration 2).
 
 Challenger: challenger_m2_4
@@ -15,7 +16,7 @@ import sys
 from pathlib import Path
 import urllib.error
 import urllib.request
-from typing import Any
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -34,17 +35,16 @@ import mcp.types as mt
 
 from strands_server.runtime.approval_gate import (
     ApprovalGate,
-    canonical_json,
     compute_action_hash,
 )
 
 
-def _make_dummy_context(name: str, arguments: dict[str, Any]) -> MiddlewareContext[mt.CallToolRequestParams]:
+def _make_dummy_context(name: str, arguments: dict[str, object]) -> MiddlewareContext[mt.CallToolRequestParams]:
     """Creates a mock MiddlewareContext matching FastMCP 4.x."""
     params = mt.CallToolRequestParams(name=name, arguments=arguments)
     ctx = MagicMock(spec=MiddlewareContext)
     ctx.message = params
-    return ctx
+    return cast(MiddlewareContext[mt.CallToolRequestParams], ctx)
 
 
 async def _dummy_call_next(ctx: MiddlewareContext[mt.CallToolRequestParams]) -> ToolResult:
@@ -97,13 +97,14 @@ async def test_concurrent_consumption_single_use_oracle() -> None:
     lock = asyncio.Lock()
     consumed = False
 
-    def mock_urlopen(req: urllib.request.Request, timeout: float = 5) -> Any:
+    def mock_urlopen(req: urllib.request.Request, timeout: float = 5) -> MagicMock:
+        del timeout
         nonlocal consumed
         url = req.full_url
         if "/consume" in url:
             raw_data = req.data
             data_str = raw_data.decode("utf-8") if isinstance(raw_data, (bytes, bytearray)) else "{}"
-            body: dict[str, Any] = json.loads(data_str) if data_str else {}
+            body: dict[str, object] = cast(dict[str, object], json.loads(data_str)) if data_str else {}
             assert body.get("toolName") == tool_name
             assert body.get("actionHash") == expected_hash
 
@@ -122,7 +123,7 @@ async def test_concurrent_consumption_single_use_oracle() -> None:
 
         raise ValueError(f"Unexpected url {url}")
 
-    async def _attempt_consume(idx: int) -> tuple[bool, str]:
+    async def _attempt_consume(_idx: int) -> tuple[bool, str]:
         ctx = _make_dummy_context(
             name=tool_name,
             arguments={**payload, "approval_id": approval_id},
@@ -131,7 +132,8 @@ async def test_concurrent_consumption_single_use_oracle() -> None:
             async with lock:
                 with patch("urllib.request.urlopen", side_effect=mock_urlopen):
                     res = await gate.on_call_tool(ctx, _dummy_call_next)
-                    text = str(res.content[0].text if res.content else "")
+                    first_block = res.content[0] if res.content else None
+                    text = first_block.text if isinstance(first_block, mt.TextContent) else ""
                     return True, text
         except ToolError as e:
             return False, str(e)
@@ -160,13 +162,14 @@ async def test_action_hash_tamper_detection() -> None:
     gate = ApprovalGate(approvals_api_url="http://mock-approvals.test/api/approvals")
     approval_id = "appr-valid-id"
     tool_name = "stripe_charge"
-    approved_args = {"amount": 50, "currency": "usd"}
-    tampered_args = {"amount": 5000, "currency": "usd"}
+    approved_args: dict[str, object] = {"amount": 50, "currency": "usd"}
+    tampered_args: dict[str, object] = {"amount": 5000, "currency": "usd"}
 
-    def mock_urlopen(req: urllib.request.Request, timeout: float = 5) -> Any:
+    def mock_urlopen(req: urllib.request.Request, timeout: float = 5) -> MagicMock:
+        del timeout
         raw_data = req.data
         data_str = raw_data.decode("utf-8") if isinstance(raw_data, (bytes, bytearray)) else "{}"
-        body: dict[str, Any] = json.loads(data_str) if data_str else {}
+        body: dict[str, object] = cast(dict[str, object], json.loads(data_str)) if data_str else {}
         action_hash = body.get("actionHash")
         approved_hash = compute_action_hash(tool_name, approved_args)
         if action_hash != approved_hash:
@@ -310,7 +313,9 @@ async def test_end_to_end_on_call_tool_channel_bypass() -> None:
         arguments={"to": "test@example.com", "channels": {"email": "auto"}},
     )
     res = await gate.on_call_tool(email_ctx, _dummy_call_next)
-    assert res.content[0].text == "Executed resend_send_email"
+    first_block = res.content[0]
+    assert isinstance(first_block, mt.TextContent)
+    assert first_block.text == "Executed resend_send_email"
 
     # 2. Non-monetary email tool with 'approve' toggle: blocked with APPROVAL_REQUIRED
     email_ctx_gated = _make_dummy_context(

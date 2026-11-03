@@ -31,13 +31,14 @@ import tempfile
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Annotated, Any, Literal, cast
 from urllib.parse import parse_qs, urlparse
 
 import google.genai as genai
 import httpx
 import pydantic
-from strands.types.tools import ToolResult, ToolUse
+from strands import tool
+from strands.types.tools import ToolResult
 
 logger = logging.getLogger(__name__)
 
@@ -171,141 +172,6 @@ class VideoSearchOutput(pydantic.BaseModel):
     overall_summary: str = pydantic.Field(
         description="Brief synthesis of how the matched video segments answer or relate to the search query."
     )
-
-
-TOOL_SPEC: dict[str, Any] = {
-    "name": "search_video",
-    "description": """Search video content semantically for timestamped clips, visual scenes, and spoken audio.
-
-Supports three native execution modes:
-1. In-Video Semantic Clip & Timestamp Search (Gemini Interactions API):
-   Provide `video_path`, `video_paths`, `video_url`, `video_urls`, `video_base64`, or a Gemini `files/...`
-   `video_id` to locate exact timestamped segments (`start`/`end` in seconds, `score` 0.0-1.0,
-   `confidence`, `summary`, and `transcript_excerpt`) inside `.mp4`, `.mov`, `.webm`, `.3gp`,
-   YouTube URLs, HTTPS URLs, `gs://` URIs, or Gemini Files API videos using `processing="agentic"`
-   (or `"static"`).
-2. External Web & YouTube Video Context Search (Gemini Interactions API + Google Search + YouTube Transcripts):
-   Provide `query` alone to discover relevant web/YouTube videos, timestamped highlights, and caption
-   excerpts grounded via Google Search.
-3. TwelveLabs Marengo Index Search (Optional Lazy Integration):
-   Provide `index_id` (or `TWELVELABS_MARENGO_INDEX_ID`) with `TWELVELABS_API_KEY` to search an existing
-   TwelveLabs Marengo index.
-
-Usage Examples:
-1. Search inside a local video file (iOS/macOS .mov or .mp4, Android/Chrome .webm):
-   search_video(query="product demo presentation", video_path="/path/to/demo.mp4")
-
-2. Search inside a YouTube video URL:
-   search_video(query="keynote announcement", video_url="https://www.youtube.com/watch?v=9hE5-98ZeCg")
-
-3. Search across multiple videos grouped by video:
-   search_video(
-       query="pricing discussion",
-       video_paths=["/path/to/call1.mp4", "/path/to/call2.mov"],
-       group_by="video",
-       threshold="high",
-   )
-
-4. Web / YouTube video discovery by query alone:
-   search_video(query="people discussing AI agents", page_limit=5)
-
-5. Search a TwelveLabs Marengo index:
-   search_video(query="product features", index_id="your-index-id")""",
-    "inputSchema": {
-        "json": {
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "Natural language search query for video content, scenes, or spoken topics",
-                },
-                "video_path": {
-                    "type": "string",
-                    "description": "Local file path to a video (.mp4, .mov, .webm, .3gp, .mpeg, .avi, .mkv) to search",
-                },
-                "video_paths": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "List of local video file paths to search across multiple videos",
-                },
-                "video_url": {
-                    "type": "string",
-                    "description": (
-                        "Video URL or URI to search (YouTube watch/short URL, HTTPS video URL, "
-                        "gs:// URI, or Gemini Files API URI)"
-                    ),
-                },
-                "video_urls": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "List of video URLs or URIs to search across multiple videos",
-                },
-                "video_base64": {
-                    "type": "string",
-                    "description": "Base64-encoded video payload (or data:video/...;base64,... URI) for inline search",
-                },
-                "video_mime_type": {
-                    "type": "string",
-                    "description": "MIME type for video_base64 or video_url (default: 'video/mp4')",
-                },
-                "video_id": {
-                    "type": "string",
-                    "description": "Gemini Files API resource name ('files/...') or video identifier",
-                },
-                "processing": {
-                    "type": "string",
-                    "enum": ["agentic", "static"],
-                    "description": (
-                        "Gemini video processing mode: 'agentic' dynamically navigates video timeline/transcripts "
-                        "on Gemini 3.5+/4 models; 'static' samples frames at 1 FPS. Default: 'agentic'"
-                    ),
-                },
-                "model_id": {
-                    "type": "string",
-                    "description": (
-                        "Optional Gemini model ID override. Defaults to failover chain: "
-                        "gemini-3.8-flash -> gemini-4-argon -> gemini-3.5-flash-lite"
-                    ),
-                },
-                "index_id": {
-                    "type": "string",
-                    "description": (
-                        "Optional TwelveLabs Marengo index ID to search when using TwelveLabs. "
-                        "Uses TWELVELABS_MARENGO_INDEX_ID env var if not provided"
-                    ),
-                },
-                "search_options": {
-                    "type": "array",
-                    "items": {
-                        "type": "string",
-                        "enum": ["visual", "audio"],
-                    },
-                    "description": "Search modalities to use. Default: ['visual', 'audio']",
-                },
-                "group_by": {
-                    "type": "string",
-                    "enum": ["video", "clip"],
-                    "description": (
-                        "How to group results. 'clip' returns individual segments, "
-                        "'video' groups clips by video. Default: 'clip'"
-                    ),
-                },
-                "threshold": {
-                    "type": "string",
-                    "enum": ["high", "medium", "low", "none"],
-                    "description": "Minimum confidence threshold for results. Default: 'medium'",
-                },
-                "page_limit": {
-                    "type": "integer",
-                    "description": "Maximum number of results to return. Default: 10",
-                    "minimum": 1,
-                    "maximum": 100,
-                },
-            },
-            "required": ["query"],
-        }
-    },
-}
 
 
 def _detect_video_mime_type(path_or_url: str, fallback: str = "video/mp4") -> str:
@@ -930,36 +796,91 @@ def _search_twelvelabs_index(
         }
 
 
-def search_video(tool: ToolUse, **kwargs: Any) -> ToolResult:
-    """Search video content using the Gemini Interactions API (in-video or web/YouTube) or TwelveLabs Marengo.
+@tool
+def search_video(
+    query: Annotated[str, "Natural language search query for video content, scenes, or spoken topics"],
+    video_path: Annotated[
+        str | None,
+        "Local file path to a video (.mp4, .mov, .webm, .3gp, .mpeg, .avi, .mkv) to search",
+    ] = None,
+    video_paths: Annotated[
+        list[str] | None,
+        "List of local video file paths to search across multiple videos",
+    ] = None,
+    video_url: Annotated[
+        str | None,
+        "Video URL or URI to search (YouTube watch/short URL, HTTPS video URL, gs:// URI, or Gemini Files API URI)",
+    ] = None,
+    video_urls: Annotated[
+        list[str] | None,
+        "List of video URLs or URIs to search across multiple videos",
+    ] = None,
+    video_base64: Annotated[
+        str | None,
+        "Base64-encoded video payload (or data:video/...;base64,... URI) for inline search",
+    ] = None,
+    video_mime_type: Annotated[
+        str,
+        "MIME type for video_base64 or video_url (default: 'video/mp4')",
+    ] = "video/mp4",
+    video_id: Annotated[
+        str | None,
+        "Gemini Files API resource name ('files/...') or video identifier",
+    ] = None,
+    processing: Annotated[
+        Literal["agentic", "static"],
+        "Gemini video processing mode: 'agentic' dynamically navigates video timeline/transcripts on Gemini 3.5+/4 models; 'static' samples frames at 1 FPS. Default: 'agentic'",
+    ] = "agentic",
+    model_id: Annotated[
+        str | None,
+        "Optional Gemini model ID override. Defaults to failover chain: gemini-3.8-flash -> gemini-4-argon -> gemini-3.5-flash-lite",
+    ] = None,
+    index_id: Annotated[
+        str | None,
+        "Optional TwelveLabs Marengo index ID to search when using TwelveLabs. Uses TWELVELABS_MARENGO_INDEX_ID env var if not provided",
+    ] = None,
+    search_options: Annotated[
+        list[Literal["visual", "audio"]] | None,
+        "Search modalities to use. Default: ['visual', 'audio']",
+    ] = None,
+    group_by: Annotated[
+        Literal["video", "clip"],
+        "How to group results. 'clip' returns individual segments, 'video' groups clips by video. Default: 'clip'",
+    ] = "clip",
+    threshold: Annotated[
+        Literal["high", "medium", "low", "none"],
+        "Minimum confidence threshold for results. Default: 'medium'",
+    ] = "medium",
+    page_limit: Annotated[
+        int,
+        "Maximum number of results to return. Default: 10",
+    ] = 10,
+) -> ToolResult:
+    """Search video content semantically for timestamped clips, visual scenes, and spoken audio.
 
-    Args:
-        tool: Tool use payload containing input parameters:
-            - `query` (str): Natural language search query.
-            - `video_path` / `video_paths` (str | list[str], optional): Local video file(s) to search.
-            - `video_url` / `video_urls` (str | list[str], optional): YouTube URL(s), HTTPS URL(s), `gs://` URI(s),
-              or Gemini Files API URI(s) to search.
-            - `video_base64` (str, optional): Inline base64-encoded video content (`< 20 MB`).
-            - `video_mime_type` (str, optional): Video MIME type (default `'video/mp4'`).
-            - `video_id` (str, optional): Gemini Files API resource name (`'files/...'`) or video identifier.
-            - `processing` (`'agentic'` | `'static'`, optional): Gemini video processing mode (default `'agentic'`).
-            - `model_id` (str, optional): Gemini model ID override.
-            - `index_id` (str, optional): TwelveLabs Marengo index ID.
-            - `search_options` (list[str], optional): Modalities `['visual', 'audio']` (default both).
-            - `group_by` (`'clip'` | `'video'`, optional): Grouping mode (default `'clip'`).
-            - `threshold` (`'high'` | `'medium'` | `'low'` | `'none'`, optional): Confidence filter (default `'medium'`).
-            - `page_limit` (int, optional): Maximum results to return (default `10`).
-        **kwargs: Additional keyword arguments ignored by the tool.
-
-    Returns:
-        Strands `ToolResult` containing human-readable timestamped search results and structured JSON output.
+    Supports three native execution modes:
+    1. In-Video Semantic Clip & Timestamp Search (Gemini Interactions API)
+    2. External Web & YouTube Video Context Search (Gemini Interactions API + Google Search + YouTube Transcripts)
+    3. TwelveLabs Marengo Index Search (Optional Lazy Integration)
     """
-    del kwargs
-    tool_use_id = str(tool.get("toolUseId", "tooluse_search_video"))
-    raw_input = tool.get("input")
-    tool_input: Mapping[str, Any] = (
-        cast(Mapping[str, Any], raw_input) if isinstance(raw_input, Mapping) else {}
-    )
+    tool_use_id = "tooluse_search_video"
+    tool_input: Mapping[str, Any] = {
+        "query": query,
+        "video_path": video_path,
+        "video_paths": video_paths,
+        "video_url": video_url,
+        "video_urls": video_urls,
+        "video_base64": video_base64,
+        "video_mime_type": video_mime_type,
+        "video_id": video_id,
+        "processing": processing,
+        "model_id": model_id,
+        "index_id": index_id,
+        "search_options": search_options,
+        "group_by": group_by,
+        "threshold": threshold,
+        "page_limit": page_limit,
+    }
 
     try:
         query = str(tool_input.get("query", "")).strip()

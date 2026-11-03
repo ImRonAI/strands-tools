@@ -157,8 +157,8 @@ def _block_has_location_source(content: ContentBlock) -> bool:
 
 
 def normalize_gemini_interactions_tools(
-    gemini_tools: Sequence[str | Mapping[str, Any] | pydantic.BaseModel] | None,
-) -> list[dict[str, Any]]:
+    gemini_tools: Sequence[str | Mapping[str, object] | pydantic.BaseModel] | None,
+) -> list[dict[str, object]]:
     """Normalize and validate native Gemini Interactions API tool specifications.
 
     Accepts:
@@ -182,7 +182,7 @@ def normalize_gemini_interactions_tools(
     if not gemini_tools:
         return []
 
-    normalized: list[dict[str, Any]] = []
+    normalized: list[dict[str, object]] = []
     for item in gemini_tools:
         if isinstance(item, str):
             tool_type = item.strip()
@@ -263,8 +263,8 @@ class GeminiInteractionsModel(Model):
         """
 
         model_id: Required[str]
-        params: dict[str, Any] | None
-        gemini_tools: Sequence[str | Mapping[str, Any] | pydantic.BaseModel] | None
+        params: dict[str, object] | None
+        gemini_tools: Sequence[str | Mapping[str, object] | pydantic.BaseModel] | None
         stateful: bool
         use_native_token_count: bool
 
@@ -547,10 +547,10 @@ class GeminiInteractionsModel(Model):
     def _format_request_tools(
         self,
         tool_specs: list[ToolSpec] | None,
-        extra_gemini_tools: Sequence[str | Mapping[str, Any] | pydantic.BaseModel] | None = None,
-    ) -> list[dict[str, Any]] | None:
+        extra_gemini_tools: Sequence[str | Mapping[str, object] | pydantic.BaseModel] | None = None,
+    ) -> list[dict[str, object]] | None:
         """Combine Strands `tool_specs` (`function` tools) with all configured native Gemini Interactions tools."""
-        tools: list[dict[str, Any]] = []
+        tools: list[dict[str, object]] = []
         seen_function_names: set[str] = set()
 
         for spec in tool_specs or []:
@@ -606,12 +606,12 @@ class GeminiInteractionsModel(Model):
         messages: Messages,
         tool_specs: list[ToolSpec] | None = None,
         system_prompt: str | None = None,
-        params: dict[str, Any] | None = None,
+        params: dict[str, object] | None = None,
         *,
         tool_choice: ToolChoice | None = None,
         stream: bool = True,
-        extra_gemini_tools: Sequence[str | Mapping[str, Any] | pydantic.BaseModel] | None = None,
-    ) -> dict[str, Any]:
+        extra_gemini_tools: Sequence[str | Mapping[str, object] | pydantic.BaseModel] | None = None,
+    ) -> dict[str, object]:
         """Build the keyword arguments dictionary for `client.aio.interactions.create(**request)`."""
         raw_params = dict(params or {})
         gen_config: dict[str, Any] = dict(raw_params.pop("generation_config", {}) or {})
@@ -1055,8 +1055,8 @@ class GeminiInteractionsModel(Model):
         output_model: type[T],
         prompt: Messages,
         system_prompt: str | None = None,
-        **kwargs: Any,
-    ) -> AsyncGenerator[dict[str, T | Any], None]:
+        **kwargs: object,
+    ) -> AsyncGenerator[dict[str, T | object], None]:
         """Get structured output from the Gemini Interactions API using `response_format` + `response_mime_type`."""
         params = {
             **(self.config.get("params") or {}),

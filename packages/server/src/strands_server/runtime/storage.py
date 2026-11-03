@@ -1,3 +1,4 @@
+# pyright: strict
 """Persistent, encrypted storage for FastMCP `OAuthProxy` state."""
 
 import os

@@ -1,3 +1,4 @@
+# pyright: strict
 """Shared Prefab workspace view: list / detail / action form / confirmed actions.
 
 Only installed `prefab_ui` 0.20.2 components and actions are used. UI actions reference
@@ -5,8 +6,9 @@ app backends by function (`CallTool(backend)`), which FastMCP resolves to the ba
 identity-addressed name at serialization time.
 """
 
+from __future__ import annotations
+
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any
 
 from prefab_ui.actions import SetState, ShowToast
 from prefab_ui.actions.base import Action
@@ -35,12 +37,12 @@ from prefab_ui.components import (
     Text,
 )
 from prefab_ui.components.control_flow import If
-from prefab_ui.rx import ERROR, EVENT, RESULT, STATE
+from prefab_ui.rx import ERROR, EVENT, RESULT, STATE, Rx
 from pydantic import BaseModel
 
 from strands_server.apps.recipes.backends import Backend, ColumnSpec, Paging
 
-INITIAL_STATE: dict[str, Any] = {
+INITIAL_STATE: dict[str, object] = {
     "rows": [],
     "meta": {},
     "selected": None,
@@ -50,7 +52,7 @@ INITIAL_STATE: dict[str, Any] = {
 }
 
 
-def _list_args(paging: Paging) -> dict[str, Any]:
+def _list_args(paging: Paging) -> dict[str, object]:
     if paging == "page":
         return {"page_number": STATE.page, "page_size": 25}
     if paging == "cursor":
@@ -63,7 +65,7 @@ def _refresh(list_backend: Backend, paging: Paging) -> CallTool:
         list_backend,
         arguments=_list_args(paging),
         on_success=[SetState("rows", RESULT.rows), SetState("meta", RESULT.meta)],
-        on_error=ShowToast(ERROR, variant="error"),
+        on_error=ShowToast(str(ERROR), variant="error"),
     )
 
 
@@ -73,11 +75,11 @@ def confirm_action(
     title: str,
     description: str,
     backend: Backend,
-    resource_id_rx: Any,
-    extra_args: Mapping[str, Any] | None = None,
+    resource_id_rx: Rx | str,
+    extra_args: Mapping[str, object] | None = None,
 ) -> None:
     """Emit a Dialog gated action: the backend runs only after the user retypes the id."""
-    arguments: dict[str, Any] = {
+    arguments: dict[str, object] = {
         "resource_id": resource_id_rx,
         "confirm": STATE.confirm,
         **dict(extra_args or {}),
@@ -96,7 +98,7 @@ def confirm_action(
                     SetState("selected", RESULT),
                     ShowToast(f"{label} done", variant="success"),
                 ],
-                on_error=ShowToast(ERROR, variant="error"),
+                on_error=ShowToast(str(ERROR), variant="error"),
             ),
         )
 
@@ -107,7 +109,7 @@ def _paging_controls(list_backend: Backend, paging: Paging) -> None:
             Button(
                 "Previous",
                 variant="outline",
-                disabled=STATE.page <= 1,
+                disabled=bool(STATE.page <= 1),
                 on_click=[SetState("page", STATE.page - 1), _refresh(list_backend, paging)],
             )
             Button(
@@ -119,7 +121,7 @@ def _paging_controls(list_backend: Backend, paging: Paging) -> None:
         Button(
             "Load more",
             variant="outline",
-            disabled=~STATE.meta.has_more,
+            disabled=bool(~STATE.meta.has_more),
             on_click=[SetState("cursor", STATE.meta.cursor), _refresh(list_backend, paging)],
         )
 
@@ -136,7 +138,7 @@ def _detail_card(
                     for key, label in detail_fields:
                         with Row(gap=2):
                             Muted(label)
-                            Text(STATE.selected[key])
+                            Text(str(STATE.selected[key]))
                     for action in actions:
                         action()
 
@@ -161,7 +163,7 @@ def list_workspace(
             detail_backend,
             arguments={"resource_id": EVENT[row_id_key]},
             on_success=SetState("selected", RESULT),
-            on_error=ShowToast(ERROR, variant="error"),
+            on_error=ShowToast(str(ERROR), variant="error"),
         )
     with Column(gap=4) as view:
         Heading(title, level=2)
@@ -175,8 +177,8 @@ def list_workspace(
             rows=STATE.rows,
             search=True,
             paginated=False,
-            page_size=25,
-            on_row_click=row_click,
+            pageSize=25,
+            onRowClick=row_click,
         )
         _paging_controls(list_backend, paging)
         _detail_card(detail_fields, actions)
@@ -193,7 +195,7 @@ def list_workspace(
                                 ShowToast("Executed", variant="success"),
                                 _refresh(list_backend, paging),
                             ],
-                            on_error=ShowToast(ERROR, variant="error"),
+                            on_error=ShowToast(str(ERROR), variant="error"),
                         ),
                     )
         for note in notes:

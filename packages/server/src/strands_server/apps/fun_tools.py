@@ -1,3 +1,4 @@
+# pyright: strict
 """Strands Fun Tools workspace: 17 interactive system, vision, audio, UI, and game tools."""
 
 from fastmcp.apps.app import FastMCPApp
@@ -54,19 +55,19 @@ fun_tools_list = register_list_backend(
     app,
     name="fun_tools_list",
     spec=ListSpec(
-        tool="strands_my_catalog",
+        tool="search",
         data_path=("rows",),
         columns=COLUMNS,
         paging="none",
-        static_args={"action": "list_tools", "suite": "strands_fun_tools"},
+        static_args={"query": "strands_fun_tools"},
     ),
 )
 fun_tool_detail = register_detail_backend(
     app,
     name="fun_tool_detail",
-    tool="strands_my_catalog",
+    tool="search",
     id_param="query",
-    static_args={"action": "list_tools", "suite": "strands_fun_tools"},
+    static_args={"query": "strands_fun_tools"},
 )
 fun_utility_run = register_form_backend(
     app, name="fun_utility_run", tool="utility", model=UtilityRunForm

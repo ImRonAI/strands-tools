@@ -55,68 +55,21 @@ import types
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Type
+from typing import Annotated, Any, Callable, Dict, List, Optional, Type
 
 import dill
 from rich import box
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
-from strands.types.tools import ToolResult, ToolUse
+from strands import tool
+from strands.types.tools import ToolResult
 
 from strands_tools.utils import console_util
 from strands_tools.utils.user_input import get_user_input
 
 # Initialize logging and set paths
 logger = logging.getLogger(__name__)
-
-# Tool specification
-TOOL_SPEC = {
-    "name": "python_repl",
-    "description": "Execute Python code in a REPL environment with interactive PTY support and state persistence.\n\n"
-    "IMPORTANT SAFETY FEATURES:\n"
-    "1. User Confirmation: Requires explicit approval before executing code\n"
-    "2. Code Preview: Shows syntax-highlighted code before execution\n"
-    "3. State Management: Maintains variables between executions, default controlled by PYTHON_REPL_RESET_STATE\n"
-    "4. Error Handling: Captures and formats errors with suggestions\n"
-    "5. Development Mode: Can bypass confirmation in BYPASS_TOOL_CONSENT environments\n"
-    "6. Interactive Control: Can enable/disable interactive PTY mode in PYTHON_REPL_INTERACTIVE environments\n\n"
-    "Key Features:\n"
-    "- Persistent state between executions\n"
-    "- Interactive PTY support for real-time feedback\n"
-    "- Output capturing and formatting\n"
-    "- Error handling and logging\n"
-    "- State reset capabilities\n\n"
-    "Example Usage:\n"
-    "1. Basic execution: code=\"print('Hello, world!')\"\n"
-    '2. With state: First call code="x = 10", then code="print(x * 2)"\n'
-    "3. Reset state: code=\"print('Fresh start')\", reset_state=True",
-    "inputSchema": {
-        "json": {
-            "type": "object",
-            "properties": {
-                "code": {"type": "string", "description": "The Python code to execute"},
-                "interactive": {
-                    "type": "boolean",
-                    "description": (
-                        "Whether to enable interactive PTY mode. "
-                        "Default controlled by PYTHON_REPL_INTERACTIVE environment variable."
-                    ),
-                    "default": True,
-                },
-                "reset_state": {
-                    "type": "boolean",
-                    "description": (
-                        "Whether to reset the REPL state before execution. "
-                        "Default controlled by PYTHON_REPL_RESET_STATE environment variable."
-                    ),
-                    "default": False,
-                },
-            },
-            "required": ["code"],
-        }
-    },
-}
 
 
 class OutputCapture:
@@ -604,16 +557,26 @@ class PtyManager:
 output_buffer: List[str] = []
 
 
-def python_repl(tool: ToolUse, **kwargs: Any) -> ToolResult:
-    """Execute Python code with persistent state and output streaming."""
+@tool
+def python_repl(
+    code: Annotated[str, "The Python code to execute"],
+    interactive: Annotated[
+        Optional[bool],
+        "Whether to enable interactive PTY mode. Default controlled by PYTHON_REPL_INTERACTIVE environment variable.",
+    ] = True,
+    reset_state: Annotated[
+        Optional[bool],
+        "Whether to reset the REPL state before execution. Default controlled by PYTHON_REPL_RESET_STATE environment variable.",
+    ] = False,
+) -> ToolResult:
+    """Execute Python code in a REPL environment with interactive PTY support and state persistence."""
     console = console_util.create()
 
-    tool_use_id = tool["toolUseId"]
-    tool_input = tool["input"]
-
-    code = tool_input["code"]
-    interactive = os.environ.get("PYTHON_REPL_INTERACTIVE", str(tool_input.get("interactive", True))).lower() == "true"
-    reset_state = os.environ.get("PYTHON_REPL_RESET_STATE", str(tool_input.get("reset_state", False))).lower() == "true"
+    tool_use_id = "python_repl"
+    default_interactive = True if interactive is None else interactive
+    default_reset = False if reset_state is None else reset_state
+    interactive = os.environ.get("PYTHON_REPL_INTERACTIVE", str(default_interactive)).lower() == "true"
+    reset_state = os.environ.get("PYTHON_REPL_RESET_STATE", str(default_reset)).lower() == "true"
 
     # Check for development mode
     strands_dev = os.environ.get("BYPASS_TOOL_CONSENT", "").lower() == "true"

@@ -1,3 +1,4 @@
+# pyright: strict
 """Strands Google workspace: Google APIs discovery, OAuth, and Gmail operations."""
 
 from fastmcp.apps.app import FastMCPApp
@@ -34,19 +35,19 @@ google_tools_list = register_list_backend(
     app,
     name="google_tools_list",
     spec=ListSpec(
-        tool="strands_my_catalog",
+        tool="search",
         data_path=("rows",),
         columns=COLUMNS,
         paging="none",
-        static_args={"action": "list_tools", "suite": "strands_google"},
+        static_args={"query": "strands_google"},
     ),
 )
 google_tool_detail = register_detail_backend(
     app,
     name="google_tool_detail",
-    tool="strands_my_catalog",
+    tool="search",
     id_param="query",
-    static_args={"action": "list_tools", "suite": "strands_google"},
+    static_args={"query": "strands_google"},
 )
 google_discover_run = register_form_backend(
     app, name="google_discover_run", tool="use_google", model=GoogleDiscoverForm

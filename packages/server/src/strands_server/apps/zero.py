@@ -1,3 +1,4 @@
+# pyright: strict
 """Strands Zero workspace: All 20 Zero compiler and toolchain tools."""
 
 from fastmcp.apps.app import FastMCPApp
@@ -31,19 +32,19 @@ zero_tools_list = register_list_backend(
     app,
     name="zero_tools_list",
     spec=ListSpec(
-        tool="strands_my_catalog",
+        tool="search",
         data_path=("rows",),
         columns=COLUMNS,
         paging="none",
-        static_args={"action": "list_tools", "suite": "strands_zero"},
+        static_args={"query": "strands_zero"},
     ),
 )
 zero_tool_detail = register_detail_backend(
     app,
     name="zero_tool_detail",
-    tool="strands_my_catalog",
+    tool="search",
     id_param="query",
-    static_args={"action": "list_tools", "suite": "strands_zero"},
+    static_args={"query": "strands_zero"},
 )
 zero_skills_run = register_form_backend(
     app, name="zero_skills_run", tool="zero_skills", model=ZeroSkillsForm

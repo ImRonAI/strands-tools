@@ -78,5 +78,21 @@ testpaths = ["tests", "packages/server/tests", "packages/client/tests"]
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
-extraPaths = ["src/tools", "src", "packages/server/src", "packages/client/src"]
+typeCheckingMode = "strict"
+include = [
+    "server.py",
+    "src/strands_graph_tool",
+    "packages/server/src",
+    "packages/server/tests",
+    "packages/client/src",
+    "packages/client/tests",
+    "tests",
+]
+extraPaths = [
+    "src/tools",
+    "src",
+    "packages/server/src",
+    "packages/client/src",
+    "src/tools/strands_tools/sessions_and_skills/sample_agent_skills",
+]
 

@@ -1,10 +1,13 @@
+# pyright: strict
 """Contract tests for strands_client and the non-Strands REA MCP proxy."""
 
 from __future__ import annotations
 
 import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable, Mapping
+from contextlib import AbstractAsyncContextManager
 from pathlib import Path
+from typing import cast
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 for pkg_src in (
@@ -18,7 +21,7 @@ import pytest
 from fastmcp import Client, FastMCP
 from fastmcp.client.transports import ClientTransport
 from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
-from fastmcp.utilities.tests import asgi_client
+import fastmcp.utilities.tests as fastmcp_tests
 from fastmcp_tasks import TasksExtension
 
 from strands_client import (
@@ -27,6 +30,7 @@ from strands_client import (
     create_rea_proxy,
     execute,
     get_schema,
+    get_tags,
     list_model_visible_tools,
     list_rea_tools,
     open_workspace,
@@ -48,8 +52,12 @@ def server_instance() -> FastMCP:
 
 @pytest.fixture
 async def client_conn(server_instance: FastMCP) -> AsyncIterator[Client[ClientTransport]]:
-    async with asgi_client(server_instance, auth="client-token") as client:
-        yield client
+    asgi_client_fn = cast(
+        Callable[..., AbstractAsyncContextManager[Client[ClientTransport]]],
+        getattr(fastmcp_tests, "asgi_client"),
+    )
+    async with asgi_client_fn(server_instance, auth="client-token") as raw_client:
+        yield raw_client
 
 
 async def test_client_catalog_and_workspace_helpers(
@@ -60,8 +68,13 @@ async def test_client_catalog_and_workspace_helpers(
         "execute",
         "generate_prefab_ui",
         "get_schema",
+        "get_tags",
         "search",
     ]
+
+    tags_res = await get_tags(client_conn)
+    assert not tags_res.is_error
+    assert "strands" in str(tags_res.content)
 
     found = await search(client_conn, "inspect_tool")
     assert "inspect_tool" in str(found.structured_content)
@@ -71,12 +84,19 @@ async def test_client_catalog_and_workspace_helpers(
 
     exec_res = await execute(
         client_conn,
-        "return await call_tool('strands_my_catalog', {'action': 'summary'})",
+        "return await call_tool('strands_auth_status', {})",
     )
     assert not exec_res.is_error
-    sc = exec_res.structured_content or {}
-    meta = sc.get("meta") or sc.get("result", {}).get("meta", {})
-    assert meta.get("total_catalog_tools", 0) >= 350
+    sc = cast(Mapping[str, object], exec_res.structured_content or {})
+    meta_raw: object = sc.get("meta")
+    if not isinstance(meta_raw, Mapping):
+        result_raw = sc.get("result")
+        meta_raw = cast(Mapping[str, object], result_raw).get("meta") if isinstance(result_raw, Mapping) else None
+    meta: Mapping[str, object] = (
+        cast(Mapping[str, object], meta_raw) if isinstance(meta_raw, Mapping) else {}
+    )
+    total_domains = meta.get("total_domains")
+    assert isinstance(total_domains, int) and total_domains >= 12
 
     for domain in ("google", "skills", "ccxt", "harness"):
         assert domain in WORKSPACE_DOMAINS

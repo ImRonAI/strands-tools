@@ -1,3 +1,4 @@
+# pyright: strict
 """Domain FastMCPApp providers. Mounted on the operations child before CodeMode.
 
 `ALL_APPS` is the single import point for `server.build_operations`. App names are

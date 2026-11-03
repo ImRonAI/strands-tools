@@ -1,3 +1,4 @@
+# pyright: strict
 """Money approval gate as FastMCP middleware on the Agent Factory root (CAT-115)."""
 
 from __future__ import annotations
@@ -9,8 +10,9 @@ import logging
 import os
 import urllib.error
 import urllib.request
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import TypeGuard
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.middleware import Middleware, MiddlewareContext
@@ -22,13 +24,21 @@ logger = logging.getLogger(__name__)
 _RULES_FILE = Path(__file__).parent / "money_rules.json"
 
 
-def canonical_json(data: Any) -> str:
+def _is_str_mapping(val: object) -> TypeGuard[Mapping[str, object]]:
+    return isinstance(val, Mapping)
+
+
+def _is_obj_sequence(val: object) -> TypeGuard[Sequence[object]]:
+    return isinstance(val, Sequence) and not isinstance(val, (str, bytes))
+
+
+def canonical_json(data: object) -> str:
     """Produces sorted-key compact JSON matching Branding-App canonicalJson."""
     return json.dumps(data, sort_keys=True, separators=(",", ":"))
 
 
-def compute_action_hash(tool_name: str, payload: dict[str, Any]) -> str:
-    canonical = canonical_json({"payload": payload, "toolName": tool_name})
+def compute_action_hash(tool_name: str, payload: Mapping[str, object]) -> str:
+    canonical = canonical_json({"payload": dict(payload), "toolName": tool_name})
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
@@ -43,12 +53,12 @@ class ApprovalGate(Middleware):
         self.service_token = service_token or os.environ.get("APPROVALS_SERVICE_TOKEN", "")
         self.rules = self._load_rules()
 
-    def _load_rules(self) -> list[dict[str, Any]]:
+    def _load_rules(self) -> list[dict[str, object]]:
         if _RULES_FILE.exists():
             try:
-                loaded = json.loads(_RULES_FILE.read_text(encoding="utf-8"))
-                if isinstance(loaded, list):
-                    return [item for item in loaded if isinstance(item, dict)]
+                loaded: object = json.loads(_RULES_FILE.read_text(encoding="utf-8"))
+                if _is_obj_sequence(loaded):
+                    return [dict(item) for item in loaded if _is_str_mapping(item)]
             except Exception as e:
                 logger.warning("Failed to load money_rules.json: %s", e)
         return [
@@ -74,21 +84,21 @@ class ApprovalGate(Middleware):
             },
         ]
 
-    def is_money_tool(self, name: str, args: dict[str, Any]) -> tuple[bool, str]:
+    def is_money_tool(self, name: str, args: Mapping[str, object]) -> tuple[bool, str]:
         for rule in self.rules:
             glob_pat = str(rule.get("tool_glob", "*"))
             if fnmatch.fnmatch(name, glob_pat):
-                endpoints: list[str] = rule.get("endpoints", [])
+                raw_eps = rule.get("endpoints")
+                endpoints = [str(ep) for ep in raw_eps] if _is_obj_sequence(raw_eps) else []
                 if endpoints:
                     endpoint_name = str(args.get("endpoint_name", "")).lower()
                     if any(ep in endpoint_name for ep in endpoints):
                         return True, str(rule.get("category", "money_costing"))
-                    # If endpoints required but not matched, do not match this rule
                     continue
                 return True, str(rule.get("category", "money_costing"))
         return False, ""
 
-    def is_channel_gated(self, category: str, args: dict[str, Any]) -> bool:
+    def is_channel_gated(self, category: str, args: Mapping[str, object]) -> bool:
         """Checks if a non-monetary channel tool is gated based on venture channel toggles (CAT-115 FR-M2-4.5)."""
         channel_categories = {
             "email",
@@ -100,17 +110,17 @@ class ApprovalGate(Middleware):
             "customer_reply",
         }
         if category not in channel_categories:
-            return True  # Monetary spend always requires approval
+            return True
 
         channels = args.get("channels")
-        if isinstance(channels, dict) and category in channels:
+        if _is_str_mapping(channels) and category in channels:
             return channels.get(category) != "auto"
 
         env_channels = os.environ.get("VENTURE_CHANNELS")
         if env_channels:
             try:
-                parsed = json.loads(env_channels)
-                if isinstance(parsed, dict) and category in parsed:
+                parsed: object = json.loads(env_channels)
+                if _is_str_mapping(parsed) and category in parsed:
                     return parsed.get(category) != "auto"
             except Exception:
                 pass
@@ -119,17 +129,16 @@ class ApprovalGate(Middleware):
     async def on_call_tool(
         self,
         context: MiddlewareContext[mt.CallToolRequestParams],
-        call_next: Any,
+        call_next: Callable[[MiddlewareContext[mt.CallToolRequestParams]], Awaitable[ToolResult]],
     ) -> ToolResult:
         p = context.message
         name = p.name
-        raw_args: dict[str, Any] = p.arguments or {}
+        raw_args: dict[str, object] = dict(p.arguments) if p.arguments is not None else {}
 
         is_gated, category = self.is_money_tool(name, raw_args)
         if not is_gated:
             return await call_next(context)
 
-        # Non-monetary channel toggle: if set to 'auto', proceed without approval gate
         if not self.is_channel_gated(category, raw_args):
             return await call_next(context)
 
@@ -161,8 +170,10 @@ class ApprovalGate(Middleware):
                 return False, f"HTTP {response.status}"
         except urllib.error.HTTPError as e:
             try:
-                body = json.loads(e.read().decode("utf-8"))
-                return False, body.get("error", str(e))
+                body: object = json.loads(e.read().decode("utf-8"))
+                if _is_str_mapping(body):
+                    return False, str(body.get("error", str(e)))
+                return False, str(e)
             except Exception:
                 return False, str(e)
         except Exception as e:
@@ -170,12 +181,12 @@ class ApprovalGate(Middleware):
             return False, str(e)
 
     def _request_approval(
-        self, tool_name: str, args: dict[str, Any], category: str, action_hash: str
+        self, tool_name: str, args: Mapping[str, object], category: str, action_hash: str
     ) -> str:
         req_data = json.dumps(
             {
                 "toolName": tool_name,
-                "args": args,
+                "args": dict(args),
                 "category": category,
                 "actionHash": action_hash,
             }
@@ -188,8 +199,9 @@ class ApprovalGate(Middleware):
         try:
             with urllib.request.urlopen(req, timeout=5) as response:
                 if response.status in (200, 201):
-                    res = json.loads(response.read().decode("utf-8"))
-                    return str(res.get("id", ""))
+                    res: object = json.loads(response.read().decode("utf-8"))
+                    if _is_str_mapping(res):
+                        return str(res.get("id", ""))
         except Exception as e:
             logger.warning("Approvals API request failed: %s", e)
 

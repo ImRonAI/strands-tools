@@ -1,6 +1,7 @@
+# pyright: strict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import cast
 
 from fastmcp.client.client import CallToolResult
 from mcp.types import BlobResourceContents, Resource, TextResourceContents
@@ -16,26 +17,26 @@ class RendererResource:
     uri: str
     mime_type: str
     html: str
-    meta: Mapping[str, Any] | None
+    meta: Mapping[str, object] | None
 
     @property
-    def csp(self) -> Mapping[str, Any] | None:
+    def csp(self) -> Mapping[str, object] | None:
         ui = self._ui_meta
         csp = ui.get("csp") if ui is not None else None
-        return csp if isinstance(csp, Mapping) else None
+        return cast(Mapping[str, object], csp) if isinstance(csp, Mapping) else None
 
     @property
-    def permissions(self) -> Mapping[str, Any] | None:
+    def permissions(self) -> Mapping[str, object] | None:
         ui = self._ui_meta
         permissions = ui.get("permissions") if ui is not None else None
-        return permissions if isinstance(permissions, Mapping) else None
+        return cast(Mapping[str, object], permissions) if isinstance(permissions, Mapping) else None
 
     @property
-    def _ui_meta(self) -> Mapping[str, Any] | None:
+    def _ui_meta(self) -> Mapping[str, object] | None:
         if self.meta is None:
             return None
         ui = self.meta.get("ui")
-        return ui if isinstance(ui, Mapping) else None
+        return cast(Mapping[str, object], ui) if isinstance(ui, Mapping) else None
 
 
 def _renderer_resource_from_contents(

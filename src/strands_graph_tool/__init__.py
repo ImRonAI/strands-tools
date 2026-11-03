@@ -1,6 +1,10 @@
+# pyright: strict
 """Heterogeneous Strands graph tool and JSON/dict agent factory package."""
 
 from .agent_factory import (
+    ConfigDict,
+    ConfigMapping,
+    ModelFactory,
     agent_from_config,
     build_agent_from_config,
     build_subagent_tool_from_config,
@@ -15,15 +19,22 @@ from .agent_factory import (
 from .graph import (
     GraphManager,
     SkillToolNode,
+    StubModel,
     build_graph,
     configure_models,
     configure_skills,
+    ensure_default_skills_configured,
+    get_model_factories,
     graph,
 )
 
 __all__ = [
+    "ConfigDict",
+    "ConfigMapping",
     "GraphManager",
+    "ModelFactory",
     "SkillToolNode",
+    "StubModel",
     "agent_from_config",
     "build_agent_from_config",
     "build_graph",
@@ -32,7 +43,9 @@ __all__ = [
     "config_to_preset",
     "configure_models",
     "configure_skills",
+    "ensure_default_skills_configured",
     "get_agent_config",
+    "get_model_factories",
     "graph",
     "list_agent_configs",
     "load_agent_config_dict",

@@ -1,25 +1,17 @@
+# pyright: strict
 """Authentication provider & unified credential registry for Strands Tools FastMCP Server.
 
 Supports:
 1. FastMCP OAuthProxy (`build_auth`) for multi-tenant MCP client OAuth + token introspection.
 2. FastMCP StaticTokenVerifier (`STRANDS_ACCESS_TOKEN` / `OUBLIAI_ACCESS_TOKEN`) for single-tenant operator mode.
-3. Unified Strands toolsuite credential management across all 12+ integrated tool repositories:
-   - Strands Google (`GOOGLE_OAUTH_CREDENTIALS`, `GOOGLE_API_KEY`, `GOOGLE_CREDENTIALS_PATH`, `GOOGLE_TOKEN_PATH`)
-   - Strands Fun Tools (`BYPASS_TOOL_CONSENT`)
-   - Strands Agent Tools (`AWS_PROFILE`, `AWS_REGION`, `TAVILY_API_KEY`, `EXA_API_KEY`, `BRIGHTDATA_API_KEY`, `SLACK_BOT_TOKEN`, `MEM0_API_KEY`)
-   - Strands Pack (`YOUTUBE_API_KEY`, `GITHUB_TOKEN`, `DISCORD_BOT_TOKEN`, `NOTION_TOKEN`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `BOX_CLIENT_ID`, `BOX_CLIENT_SECRET`, `CALENDLY_TOKEN`, `X_BEARER_TOKEN`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`, `LINKEDIN_ACCESS_TOKEN`, `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`)
-   - Strands Telegram (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_DEFAULT_CHAT_ID`)
-   - Strands Zero (`ZERO_BIN_PATH`)
-   - Strands UTCP (`UTCP_CONFIG_PATH`)
-   - Strands Harness SDK (`EXA_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`)
-   - Strands CCXT (`CCXT_EXCHANGE_ID`, `CCXT_API_KEY`, `CCXT_SECRET`, `CCXT_PASSWORD`)
-   - Strands Ecosystem (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `HACKERONE_API_USERNAME`, `HACKERONE_API_TOKEN`, `OLOSTEP_API_KEY`, `APIFY_API_TOKEN`, `STIGMER_API_KEY`)
+3. Unified Strands toolsuite credential management across all integrated tool suites.
 """
 
 from __future__ import annotations
 
 import os
-from typing import Any
+from collections.abc import Mapping, Sequence
+from typing import TypedDict, TypeGuard
 
 import httpx2
 from fastmcp.server.auth import OAuthProxy
@@ -28,7 +20,14 @@ from key_value.aio.protocols import AsyncKeyValue
 
 INTROSPECTION_CACHE_TTL_SECONDS = 60
 
-CREDENTIAL_SCHEMAS: dict[str, dict[str, Any]] = {
+
+class CredentialSchemaEntry(TypedDict):
+    title: str
+    env_vars: list[str]
+    auth_tools: list[str]
+
+
+CREDENTIAL_SCHEMAS: dict[str, CredentialSchemaEntry] = {
     "strands_google": {
         "title": "Strands Google (Workspace, Gmail, Drive, Calendar, Sheets, Docs, YouTube)",
         "env_vars": [
@@ -111,14 +110,14 @@ CREDENTIAL_SCHEMAS: dict[str, dict[str, Any]] = {
         "auth_tools": ["utcp", "utcp_register_manual"],
     },
     "strands_harness": {
-        "title": "Strands Harness SDK Tools (Sandbox Read/Write/Edit, Monty PTC, Subagent, Exa)",
+        "title": "Strands Harness SDK Tools (create_harness, Web Search, Exa)",
         "env_vars": [
             "EXA_API_KEY",
             "ANTHROPIC_API_KEY",
             "OPENAI_API_KEY",
             "GEMINI_API_KEY",
         ],
-        "auth_tools": ["web_search", "programmatic_tool_caller"],
+        "auth_tools": ["create_harness", "web_search"],
     },
     "strands_docs_mcp": {
         "title": "Strands Document MCP Server",
@@ -158,19 +157,19 @@ CREDENTIAL_SCHEMAS: dict[str, dict[str, Any]] = {
             "STIGMER_API_KEY",
             "SQL_DATABASE_URL",
         ],
-        "auth_tools": ["strands_my_catalog"],
+        "auth_tools": ["strands_auth_status", "strands_configure_credentials"],
     },
 }
 
 
-def get_auth_status(domain: str | None = None) -> dict[str, Any]:
+def get_auth_status(domain: str | None = None) -> dict[str, object]:
     """Return non-sensitive credential configuration status across all Strands domains."""
-    domains = (
+    domains: Mapping[str, CredentialSchemaEntry] = (
         {domain: CREDENTIAL_SCHEMAS[domain]}
         if domain and domain in CREDENTIAL_SCHEMAS
         else CREDENTIAL_SCHEMAS
     )
-    rows: list[dict[str, Any]] = []
+    rows: list[dict[str, object]] = []
     for key, meta in domains.items():
         env_vars = meta["env_vars"]
         configured = [var for var in env_vars if bool(os.environ.get(var))]
@@ -196,7 +195,7 @@ def get_auth_status(domain: str | None = None) -> dict[str, Any]:
 def configure_strands_credentials(
     env_var: str,
     value: str,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Set a credential environment variable in the current server process (without echoing secret values)."""
     allowed = {var for meta in CREDENTIAL_SCHEMAS.values() for var in meta["env_vars"]}
     if env_var not in allowed and not env_var.startswith(("STRANDS_", "GOOGLE_", "CCXT_", "TELEGRAM_", "AWS_")):
@@ -209,8 +208,16 @@ def configure_strands_credentials(
     }
 
 
+def _is_str_mapping(val: object) -> TypeGuard[Mapping[str, object]]:
+    return isinstance(val, Mapping)
+
+
+def _is_obj_sequence(val: object) -> TypeGuard[Sequence[object]]:
+    return isinstance(val, Sequence) and not isinstance(val, (str, bytes))
+
+
 def build_auth(
-    spec: dict[str, Any] | None = None,
+    spec: Mapping[str, object] | None = None,
     *,
     base_url: str,
     client_id: str,
@@ -227,10 +234,19 @@ def build_auth(
     """Build a FastMCP OAuthProxy for multi-tenant MCP client authentication."""
     if spec and "oauth_endpoints" in spec:
         ep = spec["oauth_endpoints"]
-        authorization_url = ep.get("authorization_url", authorization_url)
-        token_url = ep.get("token_url", token_url)
-        introspection_url = ep.get("introspection_url", introspection_url)
-        scopes = ep.get("scopes", scopes)
+        if _is_str_mapping(ep):
+            auth_ep = ep.get("authorization_url")
+            if isinstance(auth_ep, str):
+                authorization_url = auth_ep
+            tok_ep = ep.get("token_url")
+            if isinstance(tok_ep, str):
+                token_url = tok_ep
+            intro_ep = ep.get("introspection_url")
+            if isinstance(intro_ep, str):
+                introspection_url = intro_ep
+            raw_scopes = ep.get("scopes")
+            if _is_obj_sequence(raw_scopes):
+                scopes = [str(s) for s in raw_scopes]
 
     verifier = IntrospectionTokenVerifier(
         introspection_url=introspection_url,

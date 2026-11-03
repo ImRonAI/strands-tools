@@ -94,7 +94,7 @@ import json
 import logging
 import os
 import re
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional
 
 import boto3
 from mem0 import Memory as Mem0Memory
@@ -102,7 +102,8 @@ from mem0 import MemoryClient
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-from strands.types.tools import ToolResult, ToolResultContent, ToolUse
+from strands import tool
+from strands.types.tools import ToolResult, ToolResultContent
 
 from strands_tools.utils import console_util
 
@@ -111,56 +112,6 @@ logger = logging.getLogger(__name__)
 
 # Initialize Rich console
 console = console_util.create()
-
-TOOL_SPEC = {
-    "name": "mem0_memory",
-    "description": (
-        "Memory management tool for storing, retrieving, and managing memories in Mem0.\n\n"
-        "Features:\n"
-        "1. Store memories with metadata\n"
-        "2. Retrieve memories by ID or semantic search\n"
-        "3. List all memories\n"
-        "4. Delete memories\n"
-        "5. Get memory history\n\n"
-        "Actions:\n"
-        "- store: Store new memory\n"
-        "- get: Get memory by ID\n"
-        "- list: List all memories\n"
-        "- retrieve: Semantic search\n"
-        "- delete: Delete memory\n"
-        "- history: Get memory history\n\n"
-        "Note: Tenant identity (user/agent) is configured by the operator and cannot be changed."
-    ),
-    "inputSchema": {
-        "json": {
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string",
-                    "description": ("Action to perform (store, get, list, retrieve, delete, history)"),
-                    "enum": ["store", "get", "list", "retrieve", "delete", "history"],
-                },
-                "content": {
-                    "type": "string",
-                    "description": "Content to store (required for store action)",
-                },
-                "memory_id": {
-                    "type": "string",
-                    "description": "Memory ID (required for get, delete, history actions)",
-                },
-                "query": {
-                    "type": "string",
-                    "description": "Search query (required for retrieve action)",
-                },
-                "metadata": {
-                    "type": "object",
-                    "description": "Optional metadata to store with the memory",
-                },
-            },
-            "required": ["action"],
-        }
-    },
-}
 
 
 # ---------------------------------------------------------------------------
@@ -753,22 +704,47 @@ class Mem0MemoryTool:
 
         self._config = config
 
-    def mem0_memory(self, tool: ToolUse, **kwargs: Any) -> ToolResult:
-        """Agent-facing tool entry point with bound tenant identity.
-
-        The tool spec is identical to the module-level ``TOOL_SPEC`` (no user_id
-        or agent_id parameters). The bound identity is injected into every backend
-        call automatically.
-        """
+    @tool
+    def mem0_memory(
+        self,
+        action: Annotated[
+            Literal["store", "get", "list", "retrieve", "delete", "history"],
+            "Action to perform (store, get, list, retrieve, delete, history)",
+        ],
+        content: Annotated[
+            Optional[str],
+            "Content to store (required for store action)",
+        ] = None,
+        memory_id: Annotated[
+            Optional[str],
+            "Memory ID (required for get, delete, history actions)",
+        ] = None,
+        query: Annotated[
+            Optional[str],
+            "Search query (required for retrieve action)",
+        ] = None,
+        metadata: Annotated[
+            Optional[Dict[str, Any]],
+            "Optional metadata to store with the memory",
+        ] = None,
+    ) -> ToolResult:
+        """Memory management tool for storing, retrieving, and managing memories in Mem0 with bound tenant identity."""
+        tool_input: Dict[str, Any] = {"action": action}
+        if content is not None:
+            tool_input["content"] = content
+        if memory_id is not None:
+            tool_input["memory_id"] = memory_id
+        if query is not None:
+            tool_input["query"] = query
+        if metadata is not None:
+            tool_input["metadata"] = metadata
         return _execute_mem0_memory(
-            tool=tool,
+            tool_input=tool_input,
+            tool_use_id="default-id",
             user_id=self._user_id,
             agent_id=self._agent_id,
             config=self._config,
         )
-
-    # Expose TOOL_SPEC on the bound method so the framework can discover it.
-    mem0_memory.TOOL_SPEC = TOOL_SPEC  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------------------
@@ -776,8 +752,30 @@ class Mem0MemoryTool:
 # ---------------------------------------------------------------------------
 
 
-def mem0_memory(tool: ToolUse, **kwargs: Any) -> ToolResult:
-    """Standalone agent-facing tool (single-tenant).
+@tool
+def mem0_memory(
+    action: Annotated[
+        Literal["store", "get", "list", "retrieve", "delete", "history"],
+        "Action to perform (store, get, list, retrieve, delete, history)",
+    ],
+    content: Annotated[
+        Optional[str],
+        "Content to store (required for store action)",
+    ] = None,
+    memory_id: Annotated[
+        Optional[str],
+        "Memory ID (required for get, delete, history actions)",
+    ] = None,
+    query: Annotated[
+        Optional[str],
+        "Search query (required for retrieve action)",
+    ] = None,
+    metadata: Annotated[
+        Optional[Dict[str, Any]],
+        "Optional metadata to store with the memory",
+    ] = None,
+) -> ToolResult:
+    """Memory management tool for storing, retrieving, and managing memories in Mem0.
 
     Reads tenant identity from environment variables:
     - ``MEM0_USER_ID`` - user ID for memory operations
@@ -788,8 +786,8 @@ def mem0_memory(tool: ToolUse, **kwargs: Any) -> ToolResult:
     user_id = os.environ.get("MEM0_USER_ID")
     agent_id = os.environ.get("MEM0_AGENT_ID")
 
+    tool_use_id = "default-id"
     if not user_id and not agent_id:
-        tool_use_id = tool.get("toolUseId", "default-id")
         return ToolResult(
             toolUseId=tool_use_id,
             status="error",
@@ -805,23 +803,29 @@ def mem0_memory(tool: ToolUse, **kwargs: Any) -> ToolResult:
         if agent_id:
             agent_id = _validate_identity(agent_id, "MEM0_AGENT_ID")
     except ValueError as e:
-        tool_use_id = tool.get("toolUseId", "default-id")
         return ToolResult(
             toolUseId=tool_use_id,
             status="error",
             content=[ToolResultContent(text=f"Error: {str(e)}")],
         )
 
+    tool_input: Dict[str, Any] = {"action": action}
+    if content is not None:
+        tool_input["content"] = content
+    if memory_id is not None:
+        tool_input["memory_id"] = memory_id
+    if query is not None:
+        tool_input["query"] = query
+    if metadata is not None:
+        tool_input["metadata"] = metadata
+
     return _execute_mem0_memory(
-        tool=tool,
+        tool_input=tool_input,
+        tool_use_id=tool_use_id,
         user_id=user_id,
         agent_id=agent_id,
         config=None,
     )
-
-
-# Attach TOOL_SPEC to the standalone function for framework discovery.
-mem0_memory.TOOL_SPEC = TOOL_SPEC  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------------------
@@ -830,7 +834,8 @@ mem0_memory.TOOL_SPEC = TOOL_SPEC  # type: ignore[attr-defined]
 
 
 def _execute_mem0_memory(
-    tool: ToolUse,
+    tool_input: Dict[str, Any],
+    tool_use_id: str,
     user_id: Optional[str],
     agent_id: Optional[str],
     config: Optional[Dict],
@@ -838,15 +843,13 @@ def _execute_mem0_memory(
     """Core implementation shared by both class-based and standalone entry points.
 
     Args:
-        tool: The ToolUse object from the framework.
+        tool_input: Input parameters dictionary.
+        tool_use_id: Tool use ID string.
         user_id: Bound user ID (may be None if agent_id is set).
         agent_id: Bound agent ID (may be None if user_id is set).
         config: Optional Mem0 backend configuration.
     """
     try:
-        # Extract input from tool use object
-        tool_input = tool.get("input", {})
-        tool_use_id = tool.get("toolUseId", "default-id")
 
         # Validate required parameters
         if not tool_input.get("action"):

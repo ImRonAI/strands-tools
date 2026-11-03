@@ -20,7 +20,7 @@ from .media import DocumentContent, ImageContent
 if TYPE_CHECKING:
     from .agent import LocalAgent
 
-JSONSchema = dict
+JSONSchema = dict[str, object]
 """Type alias for JSON Schema dictionaries."""
 
 _LocalAgentT = TypeVar("_LocalAgentT", bound="LocalAgent", default=Any)

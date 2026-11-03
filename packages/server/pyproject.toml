@@ -25,3 +25,10 @@ where = ["src"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.pyright]
+venvPath = "../.."
+venv = ".venv"
+typeCheckingMode = "strict"
+include = ["src", "tests"]
+extraPaths = ["../../src/tools", "../../src", "src", "../client/src"]

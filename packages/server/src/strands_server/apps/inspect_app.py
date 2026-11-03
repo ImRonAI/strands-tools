@@ -1,3 +1,4 @@
+# pyright: strict
 """Strands Inspect workspace: Package inspection, @watch, @lock, and KernelSandbox."""
 
 from fastmcp.apps.app import FastMCPApp
@@ -35,19 +36,19 @@ inspect_tools_list = register_list_backend(
     app,
     name="inspect_tools_list",
     spec=ListSpec(
-        tool="strands_my_catalog",
+        tool="search",
         data_path=("rows",),
         columns=COLUMNS,
         paging="none",
-        static_args={"action": "list_tools", "suite": "strands_inspect"},
+        static_args={"query": "strands_inspect"},
     ),
 )
 inspect_tool_detail = register_detail_backend(
     app,
     name="inspect_tool_detail",
-    tool="strands_my_catalog",
+    tool="search",
     id_param="query",
-    static_args={"action": "list_tools", "suite": "strands_inspect"},
+    static_args={"query": "strands_inspect"},
 )
 inspect_package_run = register_form_backend(
     app, name="inspect_package_run", tool="inspect_tool", model=InspectPackageForm

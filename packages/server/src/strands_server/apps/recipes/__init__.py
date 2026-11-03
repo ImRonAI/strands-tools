@@ -1,3 +1,4 @@
+# pyright: strict
 """Shared list/detail/form/confirmed-action recipe for domain FastMCPApp workspaces."""
 
 from strands_server.apps.recipes.backends import (

@@ -1,3 +1,4 @@
+# pyright: strict
 """FastMCP Agent Skills Provider (`SkillsDirectoryProvider` & `SkillProvider`).
 
 Exposes all workspace skills (`src/strands_tools/sessions_and_skills/sample_agent_skills/skills`

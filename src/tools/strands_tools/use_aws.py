@@ -67,7 +67,7 @@ See the use_aws function docstring for more details on parameters and usage.
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 import boto3
 from botocore.config import Config as BotocoreConfig
@@ -76,7 +76,8 @@ from botocore.response import StreamingBody
 from rich import box
 from rich.panel import Panel
 from rich.table import Table
-from strands.types.tools import ToolResult, ToolUse
+from strands import tool
+from strands.types.tools import ToolResult
 
 from strands_tools.utils import console_util
 from strands_tools.utils.data_util import convert_datetime_to_str
@@ -299,114 +300,39 @@ def get_available_operations(service_name: str) -> List[str]:
         return []
 
 
-TOOL_SPEC = {
-    "name": "use_aws",
-    "description": (
-        "Make a boto3 client call with the specified service, operation, and parameters. "
-        "Boto3 operations are snake_case."
-    ),
-    "inputSchema": {
-        "json": {
-            "type": "object",
-            "properties": {
-                "service_name": {
-                    "type": "string",
-                    "description": "The name of the AWS service",
-                },
-                "operation_name": {
-                    "type": "string",
-                    "description": "The name of the operation to perform",
-                },
-                "parameters": {
-                    "type": "object",
-                    "description": "The parameters for the operation",
-                },
-                "region": {
-                    "type": "string",
-                    "description": "Region name for calling the operation on AWS boto3",
-                },
-                "label": {
-                    "type": "string",
-                    "description": (
-                        "Label of AWS API operations human readable explanation. "
-                        "This is useful for communicating with human."
-                    ),
-                },
-                "profile_name": {
-                    "type": "string",
-                    "description": (
-                        "Optional: AWS profile name to use from ~/.aws/credentials. "
-                        "Defaults to default profile if not specified."
-                    ),
-                },
-            },
-            "required": [
-                "region",
-                "service_name",
-                "operation_name",
-                "label",
-            ],
-        }
-    },
-}
-
-
-def use_aws(tool: ToolUse, **kwargs: Any) -> ToolResult:
+@tool
+def use_aws(
+    service_name: Annotated[str, "The name of the AWS service"],
+    operation_name: Annotated[str, "The name of the operation to perform"],
+    region: Annotated[str, "Region name for calling the operation on AWS boto3"],
+    label: Annotated[
+        str,
+        "Label of AWS API operations human readable explanation. This is useful for communicating with human.",
+    ],
+    parameters: Annotated[
+        Optional[Dict[str, Any]],
+        "The parameters for the operation",
+    ] = None,
+    profile_name: Annotated[
+        Optional[str],
+        "Optional: AWS profile name to use from ~/.aws/credentials. Defaults to default profile if not specified.",
+    ] = None,
+) -> ToolResult:
     """
-    Execute AWS service operations using boto3 with comprehensive error handling and validation.
-
-    This tool provides a universal interface to AWS services, allowing you to execute
-    any operation supported by boto3. It handles authentication, parameter validation,
-    response formatting, and provides helpful error messages with schema recommendations
-    when invalid parameters are provided.
-
-    How It Works:
-    ------------
-    1. The tool validates the provided service and operation names against available APIs
-    2. For potentially disruptive operations (create, delete, etc.), it prompts for confirmation
-    3. It sets up a boto3 client with appropriate region and credentials
-    4. The requested operation is executed with the provided parameters
-    5. Responses are processed to handle special data types (e.g., streaming bodies)
-    6. If errors occur, helpful messages and expected parameter schemas are returned
-
-    Common Usage Scenarios:
-    ---------------------
-    - Resource Management: Create, list, modify or delete AWS resources
-    - Data Operations: Store, retrieve, or process data in AWS services
-    - Configuration: Update settings or permissions for AWS services
-    - Monitoring: Retrieve metrics, logs or status information
-    - Security Operations: Manage IAM roles, policies or security settings
-
-    Args:
-        tool: The ToolUse object containing:
-            - toolUseId: Unique identifier for this tool invocation
-            - input: Dictionary containing:
-                - service_name: AWS service name (e.g., 's3', 'ec2', 'dynamodb')
-                - operation_name: Operation to perform in snake_case (e.g., 'list_buckets')
-                - parameters: Dictionary of parameters for the operation
-                - region: AWS region (e.g., 'us-west-2')
-                - label: Human-readable description of the operation
-                - profile_name: Optional AWS profile name for credentials
-        **kwargs: Additional keyword arguments (unused)
-
-    Returns:
-        ToolResult dictionary with:
-        - toolUseId: Same ID from the request
-        - status: 'success' or 'error'
-        - content: List of content dictionaries with response text
-
-    Notes:
-        - Mutative operations (create, delete, etc.) require user confirmation in non-dev environments
-        - You can disable confirmation by setting the environment variable BYPASS_TOOL_CONSENT=true
-        - The tool automatically handles special response types like streaming bodies
-        - For validation errors, the tool attempts to generate the correct input schema
-        - All datetime objects are automatically converted to strings for proper JSON serialization
+    Make a boto3 client call with the specified service, operation, and parameters. Boto3 operations are snake_case.
     """
     aws_region = os.environ.get("AWS_REGION", "us-west-2")
     console = console_util.create()
 
-    tool_use_id = tool["toolUseId"]
-    tool_input = tool["input"]
+    tool_use_id = "use_aws"
+    tool_input: Dict[str, Any] = {
+        "service_name": service_name,
+        "operation_name": operation_name,
+        "region": region or aws_region,
+        "label": label or "AWS Operation Details",
+        "parameters": parameters or {},
+        "profile_name": profile_name,
+    }
 
     service_name = tool_input["service_name"]
     operation_name = tool_input["operation_name"]

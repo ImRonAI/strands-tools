@@ -56,37 +56,16 @@ See the file_write function docstring for more details on usage options and para
 
 import os
 from os.path import expanduser
-from typing import Any, Optional, Union
+from typing import Annotated, Any, Optional, Union
 
 from rich import box
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.text import Text
-from strands.types.tools import ToolResult, ToolUse
+from strands import tool
 
 from strands_tools.utils import console_util
 from strands_tools.utils.user_input import get_user_input
-
-TOOL_SPEC = {
-    "name": "file_write",
-    "description": "Write content to a file with proper formatting and validation based on file type",
-    "inputSchema": {
-        "json": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "The path to the file to write",
-                },
-                "content": {
-                    "type": "string",
-                    "description": "The content to write to the file",
-                },
-            },
-            "required": ["path", "content"],
-        }
-    },
-}
 
 
 def detect_language(file_path: str) -> str:
@@ -137,60 +116,23 @@ def create_rich_panel(content: str, title: Optional[str] = None, syntax_language
     )
 
 
-def file_write(tool: ToolUse, **kwargs: Any) -> ToolResult:
-    """
-    Write content to a file with interactive confirmation and rich feedback.
-
-    This tool safely writes the provided content to a specified file path with
-    proper formatting, validation, and user confirmation. It displays a preview
-    of the content to be written with syntax highlighting based on the file type,
-    and requires explicit user confirmation in non-development environments.
-
-    How It Works:
-    ------------
-    1. Expands the user path to handle tilde (~) in paths
-    2. Displays file information and content to be written in formatted panels
-    3. In non-development environments, requests user confirmation before writing
-    4. Creates any necessary parent directories if they don't exist
-    5. Writes the content to the file with proper encoding
-    6. Provides rich visual feedback on operation success or failure
-
-    Common Usage Scenarios:
-    ---------------------
-    - Creating configuration files from templates
-    - Saving generated code to files
-    - Writing logs or output data to specific locations
-    - Creating or updating documentation files
-    - Saving user-specific settings or preferences
+@tool
+def file_write(
+    path: Annotated[str, "The path to the file to write"],
+    content: Annotated[str, "The content to write to the file"],
+) -> dict[str, Any]:
+    """Write content to a file with proper formatting and validation based on file type.
 
     Args:
-        tool: ToolUse object containing the following input fields:
-            - path: The path to the file to write. User paths with tilde (~)
-                    are automatically expanded.
-            - content: The content to write to the file.
-        **kwargs: Additional keyword arguments (not used currently)
+        path: The path to the file to write. User paths with tilde (~) are automatically expanded.
+        content: The content to write to the file.
 
     Returns:
-        ToolResult containing status and response content in the format:
-        {
-            "toolUseId": "<tool_use_id>",
-            "status": "success|error",
-            "content": [{"text": "Response message"}]
-        }
-
-    Notes:
-        - The BYPASS_TOOL_CONSENT environment variable can be set to "true" to bypass the confirmation step
-        - Parent directories are automatically created if they don't exist
-        - File content is previewed with syntax highlighting based on file extension
-        - User can cancel the write operation and provide a reason for cancellation
-        - All operations use rich formatting for clear visual feedback
+        Dictionary containing status and response content.
     """
     console = console_util.create()
 
-    tool_use_id = tool["toolUseId"]
-    tool_input = tool["input"]
-    path = expanduser(tool_input["path"])
-    content = tool_input["content"]
+    expanded_path = expanduser(path)
 
     strands_dev = os.environ.get("BYPASS_TOOL_CONSENT", "").lower() == "true"
 
@@ -198,7 +140,7 @@ def file_write(tool: ToolUse, **kwargs: Any) -> ToolResult:
     info_panel = Panel(
         Text.assemble(
             ("Path: ", "cyan"),
-            (path, "yellow"),
+            (expanded_path, "yellow"),
             ("\nSize: ", "cyan"),
             (f"{len(content)} characters", "yellow"),
         ),
@@ -212,7 +154,7 @@ def file_write(tool: ToolUse, **kwargs: Any) -> ToolResult:
 
     if not strands_dev:
         # Detect language and display content with syntax highlighting
-        language = detect_language(path)
+        language = detect_language(expanded_path)
         content_panel = create_rich_panel(
             content,
             title=f"File Content ({language})",
@@ -236,14 +178,13 @@ def file_write(tool: ToolUse, **kwargs: Any) -> ToolResult:
             )
             console.print(error_panel)
             return {
-                "toolUseId": tool_use_id,
                 "status": "error",
                 "content": [{"text": error_message}],
             }
 
     try:
         # Create directory if it doesn't exist
-        directory = os.path.dirname(path)
+        directory = os.path.dirname(expanded_path)
         if directory and not os.path.exists(directory):
             os.makedirs(directory)
             console.print(
@@ -257,10 +198,10 @@ def file_write(tool: ToolUse, **kwargs: Any) -> ToolResult:
             )
 
         # Write the file
-        with open(path, "w") as file:
+        with open(expanded_path, "w") as file:
             file.write(content)
 
-        success_message = f"File written successfully to {path}"
+        success_message = f"File written successfully to {expanded_path}"
         success_panel = Panel(
             Text(success_message, style="bold green"),
             title="[bold green]Write Successful",
@@ -270,7 +211,6 @@ def file_write(tool: ToolUse, **kwargs: Any) -> ToolResult:
         )
         console.print(success_panel)
         return {
-            "toolUseId": tool_use_id,
             "status": "success",
             "content": [{"text": f"File write success: {success_message}"}],
         }
@@ -285,7 +225,6 @@ def file_write(tool: ToolUse, **kwargs: Any) -> ToolResult:
         )
         console.print(error_panel)
         return {
-            "toolUseId": tool_use_id,
             "status": "error",
             "content": [{"text": error_message}],
         }

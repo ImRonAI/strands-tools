@@ -1,7 +1,7 @@
+# pyright: strict
 """Background tasks through FastMCP's native `TasksExtension` (Docket).
 
-Exposes `await_strands_job` (which polls `pack_runtime_job_runner` or executes any long-running
-Strands tool invocation asynchronously with Docket progress updates) and `strands_auth_status` /
+Exposes `await_strands_job` and `strands_auth_status` /
 `strands_configure_credentials` on the operations server.
 """
 
@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Mapping
 from datetime import timedelta
-from typing import Any
+from typing import TypeGuard
 
 from docket import Timeout
 from fastmcp import Context, FastMCP
@@ -29,6 +30,10 @@ BACKGROUND_TIMEOUT = timedelta(hours=72)
 POLL_INTERVAL = timedelta(seconds=2)
 
 
+def _is_str_mapping(val: object) -> TypeGuard[Mapping[str, object]]:
+    return isinstance(val, Mapping)
+
+
 def build_tasks_extension() -> TasksExtension:
     """`TasksExtension()`, configured by `FASTMCP_DOCKET_*` settings (default `memory://`)."""
     extension = TasksExtension()
@@ -42,14 +47,14 @@ def build_tasks_extension() -> TasksExtension:
     return extension
 
 
-def _payload(result: ToolResult) -> dict[str, Any]:
+def _payload(result: ToolResult) -> dict[str, object]:
     if result.structured_content is not None:
         return dict(result.structured_content)
     for block in result.content:
         if isinstance(block, TextContent):
             try:
-                loaded = json.loads(block.text)
-                return loaded if isinstance(loaded, dict) else {"result": loaded}
+                loaded: object = json.loads(block.text)
+                return dict(loaded) if _is_str_mapping(loaded) else {"result": loaded}
             except Exception:
                 return {"text": block.text}
     return {}
@@ -68,11 +73,12 @@ def register_task_tools(operations: FastMCP) -> None:
         kind: str = "pack_job",
         job_id: str | None = None,
         tool_name: str | None = None,
-        tool_args: dict[str, Any] | None = None,
+        tool_args: dict[str, object] | None = None,
         progress: Progress = Progress(),
         timeout: Timeout = Timeout(BACKGROUND_TIMEOUT),
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         """Run or poll a Strands tool or background job via FastMCP TasksExtension with progress reporting."""
+        _ = timeout
         if tool_name:
             await progress.set_message(f"Starting {tool_name}")
             await progress.increment()
@@ -89,7 +95,6 @@ def register_task_tools(operations: FastMCP) -> None:
                 "result": payload,
             }
 
-        # Poll a background job (e.g., pack_runtime_job_runner)
         statuses = ["running", "completed"]
         polls = 0
         for state in statuses:
@@ -112,17 +117,17 @@ def register_task_tools(operations: FastMCP) -> None:
         }
 
     @operations.tool(tags={"strands", "auth"})
-    async def strands_auth_status(domain: str | None = None) -> dict[str, Any]:
-        """Inspect credential configuration status across all 12+ Strands tool suites."""
+    async def strands_auth_status(domain: str | None = None) -> dict[str, object]:
+        """Inspect credential configuration status across all Strands tool suites."""
         return get_auth_status(domain=domain)
 
     @operations.tool(tags={"strands", "auth"})
-    async def strands_configure_credentials(env_var: str, value: str) -> dict[str, Any]:
+    async def strands_configure_credentials(env_var: str, value: str) -> dict[str, object]:
         """Configure a credential environment variable for a Strands tool suite at runtime."""
         return configure_strands_credentials(env_var=env_var, value=value)
 
     @operations.tool(name="CreateTelephonyCredentialToken", tags={"strands", "media"})
-    def create_telephony_credential_token(id: str) -> dict[str, Any]:
+    def create_telephony_credential_token(id: str) -> dict[str, object]:
         """Mint a WebRTC voice session credential token."""
         if id == "credential-malformed":
             return {"data": {}}
@@ -133,8 +138,9 @@ def register_task_tools(operations: FastMCP) -> None:
         room_id: str,
         token_ttl_secs: int = 600,
         refresh_token_ttl_secs: int = 3600,
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         """Mint a WebRTC video room client token."""
+        _ = (token_ttl_secs, refresh_token_ttl_secs)
         if room_id == "room-malformed":
             return {"data": {}}
         return {

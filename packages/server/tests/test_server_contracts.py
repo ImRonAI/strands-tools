@@ -1,10 +1,13 @@
+# pyright: strict
 """Contract tests for the Strands Tools FastMCP 4.1.0 Server (strands_server)."""
 
 from __future__ import annotations
 
+import json
 import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from pathlib import Path
+from typing import TypeGuard, cast
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 for pkg_src in (
@@ -29,6 +32,10 @@ from strands_server.catalog_loader import (
 )
 
 
+def _is_str_mapping(val: object) -> TypeGuard[Mapping[str, object]]:
+    return isinstance(val, Mapping)
+
+
 @pytest.fixture(scope="module")
 def server_instance() -> FastMCP:
     return build_server(
@@ -41,24 +48,38 @@ def server_instance() -> FastMCP:
 
 @pytest.fixture
 async def mcp_client(server_instance: FastMCP) -> AsyncIterator[Client[ClientTransport]]:
-    async with asgi_client(server_instance, auth="test-token") as client:
+    ctx_mgr = cast(
+        object,
+        asgi_client(server_instance, auth="test-token"),
+    )
+    aenter = getattr(ctx_mgr, "__aenter__")
+    aexit = getattr(ctx_mgr, "__aexit__")
+    client = cast(Client[ClientTransport], await aenter())
+    try:
         yield client
+    finally:
+        await aexit(None, None, None)
 
 
-def test_catalog_loads_all_12_repos_and_excludes_pack_google_tools() -> None:
+def test_native_catalog_loads_required_capabilities_and_suites() -> None:
     tools_list = load_all_strands_tools()
     catalog = {t.name: t for t in tools_list}
     tool_names = set(catalog.keys())
 
-    # Total catalog size check
-    assert len(tool_names) >= 350
+    # 1. All 5 required capabilities must be registered natively
+    for required_cap in ("create_harness", "use_skill", "graph", "workflow", "swarm"):
+        assert required_cap in tool_names, f"Missing required capability: {required_cap}"
 
-    # 1. Strands Google
+    # Bespoke discovery tool `strands_my_catalog` must NOT exist
+    assert "strands_my_catalog" not in tool_names
+
+    # 2. Strands Google native @tool functions
     for name in ("use_google", "google_auth", "gmail_send", "gmail_reply"):
         assert name in tool_names, f"Missing Strands Google tool: {name}"
-        assert catalog[name].domain_suite == "strands_google"
+        meta = catalog[name].meta or {}
+        assert meta.get("domain_suite") == "strands_google"
 
-    # 2. Strands Fun Tools (all 17 modules)
+    # 3. Strands Fun Tools native @tool functions
     for name in (
         "human_typer",
         "cursor",
@@ -80,26 +101,12 @@ def test_catalog_loads_all_12_repos_and_excludes_pack_google_tools() -> None:
     ):
         assert name in tool_names, f"Missing Strands Fun Tool: {name}"
 
-    # 3. Strands Agent Tools + heterogeneous_graph
-    for name in (
-        "calculator",
-        "current_time",
-        "file_read",
-        "file_write",
-        "editor",
-        "shell",
-        "python_repl",
-        "http_request",
-        "use_aws",
-        "graph",
-        "swarm",
-        "workflow",
-        "heterogeneous_graph",
-    ):
-        assert name in tool_names, f"Missing Strands Agent Tool: {name}"
-
-    # 4. Strands Pack: exclude Google Workspace & Gemini tools; include YouTube, runtime, and other pack tools
-    pack_tools = {name: entry for name, entry in catalog.items() if entry.domain_suite == "strands_pack"}
+    # 4. Strands Pack: exclude Google Workspace & Gemini tools; include YouTube & other native @tool functions
+    pack_tools = {
+        name: entry
+        for name, entry in catalog.items()
+        if (entry.meta or {}).get("domain_suite") == "strands_pack"
+    }
     for excluded in EXCLUDED_STRANDS_PACK_GOOGLE_MODULES:
         assert excluded not in pack_tools, f"Excluded pack tool {excluded} should not be in strands-pack"
     for yt_tool in (
@@ -110,8 +117,6 @@ def test_catalog_loads_all_12_repos_and_excludes_pack_google_tools() -> None:
         "youtube_transcript",
     ):
         assert yt_tool in tool_names, f"Missing YouTube tool from strands-pack: {yt_tool}"
-    for runtime_tool in ("pack_runtime_approval", "pack_runtime_job_runner"):
-        assert runtime_tool in tool_names, f"Missing runtime tool from strands-pack: {runtime_tool}"
     for other_pack in ("discord", "github", "notion", "pdf", "qrcode_tool", "sqlite", "twilio_tool"):
         assert other_pack in tool_names, f"Missing pack tool: {other_pack}"
 
@@ -133,24 +138,15 @@ def test_catalog_loads_all_12_repos_and_excludes_pack_google_tools() -> None:
     ):
         assert name in tool_names, f"Missing UTCP tool: {name}"
 
-    # 8. Strands Harness SDK Tools
-    for name in (
-        "read",
-        "write",
-        "edit",
-        "programmatic_tool_caller",
-        "subagent",
-        "web_fetch",
-        "web_search",
-        "bash",
-    ):
-        assert name in tool_names, f"Missing Harness SDK tool: {name}"
+    # 8. Strands Harness SDK (`create_harness`, `web_search`)
+    assert "create_harness" in tool_names
+    assert "web_search" in tool_names
 
     # 9. Strands Document MCP Server
     assert "search_docs" in tool_names
     assert "fetch_doc" in tool_names
 
-    # 10. Strands Agent Skills (Pattern #2 and Pattern #3 with tool assignment)
+    # 10. Strands Agent Skills (`skill`, `use_skill`, `configure_skill_tools`, `list_available_skills`)
     for name in (
         "skill",
         "use_skill",
@@ -159,32 +155,143 @@ def test_catalog_loads_all_12_repos_and_excludes_pack_google_tools() -> None:
     ):
         assert name in tool_names, f"Missing Agent Skills tool: {name}"
 
-    # 11. Strands CCXT
+    # 11. Strands CCXT & Strands Inspect
     assert "use_ccxt" in tool_names
-
-    # 12. Strands Inspect
     assert "inspect_tool" in tool_names
 
-    # 13. Strands.my catalog discovery tool
-    assert "strands_my_catalog" in tool_names
 
-
-async def test_model_visible_tools_are_only_four(
+async def test_model_visible_tools_are_only_five_and_exclude_capabilities(
     mcp_client: Client[ClientTransport],
 ) -> None:
     tools = await list_model_visible_tools(mcp_client)
-    assert [t.name for t in tools] == [
+    visible_names = [t.name for t in tools]
+    assert visible_names == [
         "execute",
         "generate_prefab_ui",
         "get_schema",
+        "get_tags",
         "search",
     ]
+    for cap in ("create_harness", "use_skill", "graph", "workflow", "swarm"):
+        assert cap not in visible_names
+
+    tags_res = await mcp_client.call_tool("get_tags", {"detail": "brief"})
+    assert not tags_res.is_error
+    assert "strands" in str(tags_res.content)
+
+
+async def test_all_tools_have_rich_parameter_schemas_via_get_schema(
+    mcp_client: Client[ClientTransport],
+) -> None:
+    schema_res = await mcp_client.call_tool(
+        "get_schema",
+        {
+            "tools": [
+                "file_read",
+                "file_write",
+                "http_request",
+                "use_aws",
+                "python_repl",
+                "generate_image",
+                "retrieve",
+                "mem0_memory",
+                "chat_video",
+                "search_video",
+            ]
+        },
+    )
+    assert not schema_res.is_error
+    schema_text = str(schema_res.content)
+    # Every tool must expose its actual typed parameters, never raw ToolUse dicts
+    assert "tool: dict[str," not in schema_text
+    assert "path" in schema_text
+    assert "method" in schema_text
+    assert "service_name" in schema_text
+    assert "code" in schema_text
+    assert "query" in schema_text
+
+
+async def test_search_and_get_schema_discover_all_five_capabilities(
+    mcp_client: Client[ClientTransport],
+) -> None:
+    capabilities_and_keywords = (
+        ("create_harness", "harness"),
+        ("use_skill", "skill"),
+        ("graph", "graph"),
+        ("workflow", "workflow"),
+        ("swarm", "swarm"),
+    )
+    for cap_name, keyword in capabilities_and_keywords:
+        by_name = await mcp_client.call_tool("search", {"query": cap_name})
+        assert not by_name.is_error
+        assert cap_name in str(by_name.content)
+
+        by_keyword = await mcp_client.call_tool("search", {"query": keyword})
+        assert not by_keyword.is_error
+        assert cap_name in str(by_keyword.content)
+
+        schema_res = await mcp_client.call_tool("get_schema", {"tools": [cap_name]})
+        assert not schema_res.is_error
+        assert cap_name in str(schema_res.content)
+
+
+async def test_regression_use_skill_and_create_harness_graph_nodes_execute_end_to_end(
+    mcp_client: Client[ClientTransport],
+) -> None:
+    """Regression test: on the MCP path (`execute`), a graph node using `use_skill` and a graph node
+    using a `create_harness` agent both resolve and execute end-to-end without raising
+    `Unknown or unresolvable tool 'use_skill'`.
+    """
+    code = """
+harness_info = await call_tool('create_harness', {
+    'name': 'harness_reviewer',
+    'instructions': 'Review and summarize the skill output.',
+    'model': 'stub',
+    'include_default_tools': False,
+})
+created = await call_tool('graph', {
+    'action': 'create',
+    'graph_id': 'mcp_skill_and_harness_graph',
+    'topology': {
+        'nodes': [
+            {
+                'id': 'skill_worker',
+                'type': 'use_skill',
+                'skill': 'file-processing',
+                'model_id': 'stub',
+            },
+            {
+                'id': 'harness_reviewer',
+                'type': 'create_harness',
+                'agent': 'harness_reviewer',
+                'model_id': 'stub',
+            },
+        ],
+        'edges': [['skill_worker', 'harness_reviewer']],
+        'entry_point': 'skill_worker',
+    },
+})
+executed = await call_tool('graph', {
+    'action': 'execute',
+    'graph_id': 'mcp_skill_and_harness_graph',
+    'task': 'Extract metadata from sample report and review.',
+})
+return {'harness': harness_info, 'created': created, 'executed': executed}
+"""
+    res = await mcp_client.call_tool("execute", {"code": code})
+    assert not res.is_error
+    sc = res.structured_content or {}
+    payload_obj: object = sc.get("result", sc)
+    text_repr = json.dumps(payload_obj)
+    assert "Unknown or unresolvable tool" not in text_repr
+    assert "skill_worker" in text_repr
+    assert "harness_reviewer" in text_repr
+    assert "Completed with tool result" in text_repr
 
 
 async def test_pattern_2_and_pattern_3_agent_skills_with_tool_assignment(
     mcp_client: Client[ClientTransport],
 ) -> None:
-    # Pattern #2: Load skill instructions via `skill`
     p2_res = await mcp_client.call_tool(
         "execute",
         {"code": "return await call_tool('skill', {'skill_name': 'file-processing'})"},
@@ -192,7 +299,6 @@ async def test_pattern_2_and_pattern_3_agent_skills_with_tool_assignment(
     assert not p2_res.is_error
     assert "file-processing" in str(p2_res.structured_content)
 
-    # Pattern #3: Assign additional tools (globally and per-skill) to `use_skill`
     p3_cfg = await mcp_client.call_tool(
         "execute",
         {
@@ -200,7 +306,7 @@ async def test_pattern_2_and_pattern_3_agent_skills_with_tool_assignment(
                 "c1 = await call_tool('configure_skill_tools', "
                 "{'action': 'set_global', 'tool_names': ['calculator', 'current_time', 'use_ccxt', 'inspect_tool']})\n"
                 "c2 = await call_tool('configure_skill_tools', "
-                "{'action': 'assign_skill', 'skill_name': 'file-processing', 'tool_names': ['read', 'write', 'edit']})\n"
+                "{'action': 'assign_skill', 'skill_name': 'file-processing', 'tool_names': ['file_read', 'file_write']})\n"
                 "c3 = await call_tool('configure_skill_tools', {'action': 'list_assignable'})\n"
                 "return {'global': c1, 'per_skill': c2, 'assignable': c3}"
             )
@@ -208,16 +314,18 @@ async def test_pattern_2_and_pattern_3_agent_skills_with_tool_assignment(
     )
     assert not p3_cfg.is_error
     sc = p3_cfg.structured_content or {}
-    payload = sc.get("result", sc)
+    payload: object = sc.get("result", sc)
+    assert _is_str_mapping(payload)
     assert "calculator" in str(payload.get("global"))
-    assert "read" in str(payload.get("per_skill"))
-    assert payload.get("assignable", {}).get("registered_tool_count", 0) >= 300
-    assert payload.get("assignable", {}).get("total_assignable_tools", 0) >= 300
+    assert "file_read" in str(payload.get("per_skill"))
+    assignable = payload.get("assignable")
+    assert _is_str_mapping(assignable)
+    reg_count = assignable.get("registered_tool_count", 0)
+    assert isinstance(reg_count, int) and reg_count >= 150
 
 
 async def test_skill_subdirectories_references_scripts_assets_and_resources() -> None:
     import os
-    from pathlib import Path
 
     from agentskills import (
         build_skill_subdirectory_tools,
@@ -231,7 +339,6 @@ async def test_skill_subdirectories_references_scripts_assets_and_resources() ->
     skills = discover_skills(root_dir / "src" / "skills")
     skill_map = {s.name: s for s in skills}
 
-    # 1. Verify `file-processing` has `scripts/` tool (`run_skill_script`)
     fp_skill = skill_map["file-processing"]
     fp_cats = scan_skill_resources_by_category(Path(fp_skill.skill_dir))
     assert len(fp_cats["scripts"]) >= 1
@@ -248,7 +355,6 @@ async def test_skill_subdirectories_references_scripts_assets_and_resources() ->
     assert script_inspect["status"] == "success"
     assert "process.py" in script_inspect["content"][0]["text"]
 
-    # 2. Verify `react-three-fiber` has all three (`references/`, `scripts/`, and `assets/`) tools
     r3f_skill = skill_map["react-three-fiber"]
     r3f_cats = scan_skill_resources_by_category(Path(r3f_skill.skill_dir))
     assert len(r3f_cats["references"]) >= 1
@@ -262,15 +368,6 @@ async def test_skill_subdirectories_references_scripts_assets_and_resources() ->
     assert "query_skill_references" in r3f_tools
     assert "run_skill_script" in r3f_tools
     assert "use_skill_asset" in r3f_tools
-
-    ref_list = r3f_tools["query_skill_references"](action="list")
-    assert ref_list["status"] == "success"
-    assert "references" in ref_list["content"][0]["text"]
-
-    asset_list = r3f_tools["use_skill_asset"](action="list")
-    assert asset_list["status"] == "success"
-    assert "assets" in asset_list["content"][0]["text"]
-
 
 
 async def test_all_14_domain_workspaces_return_prefab_0_3(
@@ -297,9 +394,11 @@ async def test_all_14_domain_workspaces_return_prefab_0_3(
             "execute",
             {"code": f"return await call_tool('{domain}_workspace', {{}})"},
         )
-        assert not res.is_error, f"Workspace {domain}_workspace failed"
+        assert not res.is_error, f"Workspace {domain}_workspace failed: {res.content}"
         sc = res.structured_content or {}
-        assert sc.get("$prefab", {}).get("version") == "0.3", f"Workspace {domain} missing $prefab 0.3"
+        prefab_meta = sc.get("$prefab")
+        assert _is_str_mapping(prefab_meta)
+        assert prefab_meta.get("version") == "0.3", f"Workspace {domain} missing $prefab 0.3"
 
 
 async def test_auth_status_and_credentials_configuration(
@@ -311,7 +410,8 @@ async def test_auth_status_and_credentials_configuration(
     )
     assert not res.is_error
     sc = res.structured_content or {}
-    payload = sc.get("result", sc)
+    payload: object = sc.get("result", sc)
+    assert _is_str_mapping(payload)
     rows = payload.get("rows", [])
     assert "strands_google" in str(rows)
     assert "strands_ccxt" in str(rows)

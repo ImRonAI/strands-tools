@@ -1,3 +1,4 @@
+# pyright: strict
 """Strands Document MCP Server workspace: search_docs and fetch_doc over Strands documentation."""
 
 from fastmcp.apps.app import FastMCPApp
@@ -34,19 +35,19 @@ docs_tools_list = register_list_backend(
     app,
     name="docs_tools_list",
     spec=ListSpec(
-        tool="strands_my_catalog",
+        tool="search",
         data_path=("rows",),
         columns=COLUMNS,
         paging="none",
-        static_args={"action": "list_tools", "suite": "strands_docs_mcp"},
+        static_args={"query": "strands_docs_mcp"},
     ),
 )
 docs_tool_detail = register_detail_backend(
     app,
     name="docs_tool_detail",
-    tool="strands_my_catalog",
+    tool="search",
     id_param="query",
-    static_args={"action": "list_tools", "suite": "strands_docs_mcp"},
+    static_args={"query": "strands_docs_mcp"},
 )
 docs_search_run = register_form_backend(
     app, name="docs_search_run", tool="search_docs", model=SearchDocsForm

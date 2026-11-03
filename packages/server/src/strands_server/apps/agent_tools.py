@@ -1,3 +1,4 @@
+# pyright: strict
 """Strands Agent Tools workspace: Official strands-agents/tools + heterogeneous graph."""
 
 from fastmcp.apps.app import FastMCPApp
@@ -32,19 +33,19 @@ agent_tools_list = register_list_backend(
     app,
     name="agent_tools_list",
     spec=ListSpec(
-        tool="strands_my_catalog",
+        tool="search",
         data_path=("rows",),
         columns=COLUMNS,
         paging="none",
-        static_args={"action": "list_tools", "suite": "strands_tools", "limit": 100},
+        static_args={"query": "strands_tools", "limit": 100},
     ),
 )
 agent_tool_detail = register_detail_backend(
     app,
     name="agent_tool_detail",
-    tool="strands_my_catalog",
+    tool="search",
     id_param="query",
-    static_args={"action": "list_tools", "suite": "strands_tools"},
+    static_args={"query": "strands_tools"},
 )
 calculator_run = register_form_backend(
     app, name="calculator_run", tool="calculator", model=CalculatorRunForm

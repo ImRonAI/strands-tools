@@ -1,3 +1,4 @@
+# pyright: strict
 """Adversarial Verification Suite by challenger_m2_5 (Milestone 2 Iteration 3).
 
 Exhaustive empirical testing for ApprovalGate:
@@ -11,13 +12,11 @@ Exhaustive empirical testing for ApprovalGate:
 
 from __future__ import annotations
 
-import asyncio
-import io
 import json
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -36,7 +35,6 @@ import mcp.types as mt
 
 from strands_server.runtime.approval_gate import (
     ApprovalGate,
-    compute_action_hash,
 )
 
 NON_MONETARY_CATEGORIES = (
@@ -59,11 +57,11 @@ MONETARY_CATEGORIES = (
 )
 
 
-def _make_dummy_context(name: str, arguments: dict[str, Any]) -> MiddlewareContext[mt.CallToolRequestParams]:
+def _make_dummy_context(name: str, arguments: dict[str, object]) -> MiddlewareContext[mt.CallToolRequestParams]:
     params = mt.CallToolRequestParams(name=name, arguments=arguments)
     ctx = MagicMock(spec=MiddlewareContext)
     ctx.message = params
-    return ctx
+    return cast(MiddlewareContext[mt.CallToolRequestParams], ctx)
 
 
 async def _dummy_call_next(ctx: MiddlewareContext[mt.CallToolRequestParams]) -> ToolResult:
@@ -117,7 +115,7 @@ def test_all_seven_categories_fallback_when_category_omitted(category: str) -> N
 
 
 # =========================================================================
-# 2. Monetary Safety Invariant (Cannot Bypass Under Any Condition)
+# 2. Monetary Safety Invariant (Never Bypassed)
 # =========================================================================
 
 @pytest.mark.parametrize("monetary_cat", MONETARY_CATEGORIES)
@@ -146,7 +144,7 @@ def test_adversarial_malformed_arguments_fail_closed(category: str) -> None:
     """Adversarial payloads in args['channels'] must fail closed (return True / gated)."""
     gate = ApprovalGate()
 
-    malformed_channel_payloads = [
+    malformed_channel_payloads: list[object] = [
         "auto",
         123,
         True,
@@ -222,7 +220,9 @@ async def test_end_to_end_on_call_tool_all_non_monetary_categories() -> None:
         arguments={"to": "test@example.com", "channels": {"email": "auto"}},
     )
     res = await gate.on_call_tool(email_auto_ctx, _dummy_call_next)
-    assert res.content[0].text == "Executed resend_send_email"
+    first_email_block = res.content[0]
+    assert isinstance(first_email_block, mt.TextContent)
+    assert first_email_block.text == "Executed resend_send_email"
 
     # Social auto
     social_auto_ctx = _make_dummy_context(
@@ -230,7 +230,9 @@ async def test_end_to_end_on_call_tool_all_non_monetary_categories() -> None:
         arguments={"text": "announcement", "channels": {"social": "auto"}},
     )
     res_social = await gate.on_call_tool(social_auto_ctx, _dummy_call_next)
-    assert res_social.content[0].text == "Executed buffer_create_post"
+    first_social_block = res_social.content[0]
+    assert isinstance(first_social_block, mt.TextContent)
+    assert first_social_block.text == "Executed buffer_create_post"
 
     # Social approve (MUST block)
     social_appr_ctx = _make_dummy_context(
@@ -247,7 +249,7 @@ async def test_end_to_end_on_call_tool_monetary_invariance() -> None:
     """Verify on_call_tool blocks monetary tools even when channels attempt deceptive bypass."""
     gate = ApprovalGate()
 
-    deceptive_arguments = [
+    deceptive_arguments: list[dict[str, object]] = [
         {"amount": 100, "channels": {"payments": "auto"}},
         {"amount": 100, "channels": {"email": "auto", "social": "auto"}},
         {"amount": 100, "channels": {"payments": "auto", "deploy": "auto"}},
